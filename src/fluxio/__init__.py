@@ -29,6 +29,7 @@ __all__ = [
     "NumberCell",
     "SubplotSlot",
     "ToolbarConfig",
+    "llm_context",
     "print",
     "render_spec_to_terminal",
     "resolve_cell_style",
@@ -55,6 +56,17 @@ def print(
         ansi=ansi,
         width=width,
     )
+
+
+def llm_context(
+    mode: str = "compact",
+    *,
+    chart: str | None = None,
+) -> str:
+    """Return AI-optimized Fluxio documentation at runtime (`'compact'`, `'full'`, `'stub'`, or `chart='...'`)."""
+    from .ai_docs import llm_context as _llm_context
+
+    return _llm_context(mode=mode, chart=chart)
 
 
 def save(
