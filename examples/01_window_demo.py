@@ -96,9 +96,18 @@ def main() -> None:
         action="store_true",
         help="Affiche uniquement `print(fig)` dans le terminal sans ouvrir de fenêtre",
     )
+    parser.add_argument(
+        "--live-print",
+        action="store_true",
+        help="Anime `fig.print()` en direct sur place dans le terminal (façon btop)",
+    )
     args = parser.parse_args()
 
     fig = build_demo_figure(args.variant)
+
+    if args.live_print:
+        fig.print()
+        return
 
     # Affichage direct dans le terminal (remplace plotext sans changer d'objet !)
     print(fig)

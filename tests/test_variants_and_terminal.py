@@ -87,3 +87,40 @@ def test_text_variant_graphical_exports_and_html(tmp_path):
     assert png_path.exists() and png_path.stat().st_size > 2000
     assert svg_path.exists() and "Mode TUI Graphique" in svg_path.read_text(encoding="utf-8")
     assert '"variant": "text"' in html_path.read_text(encoding="utf-8") or '"variant":"text"' in html_path.read_text(encoding="utf-8")
+
+
+def test_repeated_print_fig_advances_dynamic_values_and_tty_cursor_up(monkeypatch):
+    import itertools
+    import sys
+
+    gen = (float(i * 10) for i in itertools.count(1))
+    fig = fx.Figure(title="Boucle Manuelle")
+    fig.number(gen, unit="pkt", precision=0, label="Compteur")
+
+    # Simulate an interactive TTY stdout so 2nd print(fig) prepends cursor-up escape
+    monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
+
+    first = str(fig)
+    assert "\x1b[" in first
+    # 1st frame has NO cursor-up escape at the start
+    assert not first.startswith("\x1b[") or not first.split("m")[0].endswith("A")
+
+    second = str(fig)
+    # 2nd frame moves cursor up (`\x1b[<N>A\r\x1b[J`) and advances generator from 10 to 20!
+    assert "A\r\x1b[J" in second[:20]
+    assert first != second
+
+
+def test_fig_print_and_fx_print_live_duration(capsys):
+    fig = fx.Figure(title="Auto Live Print", fps=20)
+    fig.number(lambda t: round(100 + t * 50, 1), unit="Hz", precision=1, label="Freq")
+
+    # Test both fig.print(...) and fx.print(fig, ...)
+    fig.print(duration=0.18, fps=20, controls=False)
+    out1 = capsys.readouterr().out
+    assert "Auto Live Print" in out1
+    assert "Freq" in out1
+
+    fx.print(fig, duration=0.12, fps=20, controls=False)
+    out2 = capsys.readouterr().out
+    assert "Auto Live Print" in out2

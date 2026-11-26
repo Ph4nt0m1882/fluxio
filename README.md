@@ -161,7 +161,11 @@ fig[0, 1].style(accent="#34d399", accent_side="right").number(
 )
 
 # 1) Affichage direct dans le terminal (remplace plotext !)
+#    Appelé dans une boucle (ex: while True: print(fig)), il se met à jour sur place !
 print(fig)
+
+# 1bis) Ou laissez Fluxio gérer l'animation temps réel sur place (Espace = Pause, R = Reset, Q = Quitter) :
+fig.print()  # (équivalent à fx.print(fig))
 
 # 2) Ouverture de la fenêtre interactive en look TUI / Console
 fx.show(fig)

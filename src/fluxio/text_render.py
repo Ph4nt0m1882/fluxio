@@ -1,9 +1,15 @@
 """Terminal TUI & `btop`-style block-digit renderer for `print(fig)` and `.txt` exports."""
 
 from __future__ import annotations
+import select
 import shutil
-from typing import Any
+import sys
+import time
+from typing import TYPE_CHECKING, Any
 from .theme import hex_to_rgb, resolve_cell_style
+
+if TYPE_CHECKING:
+    from .figure import Figure
 
 DIGIT_SUBPIXELS: dict[str, list[str]] = {
     "0": ["111", "101", "101", "101", "101", "111"],
@@ -283,3 +289,160 @@ def render_spec_to_terminal(
         out_lines.extend(segments_per_line)
 
     return "\n".join(out_lines)
+
+
+def get_active_ipython_kernel() -> Any | None:
+    """Return the active IPython kernel instance when running inside a Jupyter Notebook, else None."""
+    if "ipykernel" not in sys.modules:
+        return None
+    try:
+        from IPython import get_ipython  # type: ignore
+
+        ip = get_ipython()
+        if ip is not None and "IPKernelApp" in getattr(ip, "config", {}):
+            return ip
+    except Exception:
+        pass
+    return None
+
+
+def _poll_tty_key() -> str | None:
+    try:
+        rlist, _, _ = select.select([sys.stdin], [], [], 0.0)
+        if rlist:
+            return sys.stdin.read(1)
+    except Exception:
+        pass
+    return None
+
+
+def live_print_figure(
+    fig: Figure,
+    *,
+    duration: float | None = None,
+    fps: int | None = None,
+    controls: bool = True,
+    ansi: bool = True,
+    width: int | None = None,
+) -> None:
+    """Animate `fig` in-place inside a terminal (with keyboard controls) or Jupyter cell."""
+    if not fig.is_dynamic and duration is None:
+        sys.stdout.write(fig.to_text(ansi=ansi, width=width) + "\n")
+        sys.stdout.flush()
+        return
+
+    effective_fps = max(1, int(fps if fps is not None else fig.fps))
+    ip = get_active_ipython_kernel()
+    # Cap Jupyter refresh rate slightly so notebook IOPub stays responsive
+    if ip is not None and fps is None:
+        effective_fps = min(effective_fps, 12)
+    interval = 1.0 / effective_fps
+
+    is_tty = bool(getattr(sys.stdout, "isatty", lambda: False)())
+    stdin_tty = bool(getattr(sys.stdin, "isatty", lambda: False)())
+    use_kbd = bool(controls and is_tty and stdin_tty and ip is None)
+
+    old_term_attrs: Any = None
+    stdin_fd: int | None = None
+    if use_kbd:
+        try:
+            import termios
+            import tty
+
+            stdin_fd = sys.stdin.fileno()
+            old_term_attrs = termios.tcgetattr(stdin_fd)
+            tty.setcbreak(stdin_fd)
+        except Exception:
+            use_kbd = False
+            old_term_attrs = None
+
+    playing = True
+    start_wall = time.monotonic()
+    run_start = start_wall
+    paused_elapsed = 0.0
+    step_idx = 0
+    prev_lines = 0
+
+    if is_tty and ansi:
+        sys.stdout.write("\x1b[?25l")
+        sys.stdout.flush()
+
+    try:
+        while True:
+            now = time.monotonic()
+            if duration is not None and (now - start_wall) >= duration and step_idx > 0:
+                break
+
+            if use_kbd:
+                key = _poll_tty_key()
+                if key in ("q", "Q", "\x1b"):
+                    break
+                if key == " ":
+                    if playing:
+                        paused_elapsed += now - run_start
+                        playing = False
+                    else:
+                        run_start = now
+                        playing = True
+                elif key in ("r", "R"):
+                    paused_elapsed = 0.0
+                    run_start = now
+                    step_idx = 0
+                    for cell in fig.cells:
+                        cell.reset_cursor()
+
+            elapsed = paused_elapsed + (now - run_start) if playing else paused_elapsed
+            spec = fig.to_spec(t=elapsed, step_index=step_idx)
+            frame_txt = render_spec_to_terminal(spec, ansi=ansi, width=width)
+
+            if controls and is_tty:
+                state_badge = (
+                    "\x1b[1;32m● LIVE\x1b[0m" if playing else "\x1b[1;33m⏸ PAUSE\x1b[0m"
+                ) if ansi else ("LIVE" if playing else "PAUSE")
+                dim = "\x1b[39;2m" if ansi else ""
+                rst = "\x1b[0m" if ansi else ""
+                frame_txt += (
+                    f"\n  {state_badge}  {dim}[Espace] Pause/Play • [R] Reset • [Q / Ctrl+C] Quitter{rst}"
+                )
+
+            if ip is not None:
+                if step_idx > 0:
+                    from IPython.display import clear_output  # type: ignore
+
+                    clear_output(wait=True)
+                sys.stdout.write(frame_txt + "\n")
+                sys.stdout.flush()
+            elif is_tty:
+                prefix = f"\x1b[{prev_lines}A\r\x1b[J" if prev_lines > 0 else ""
+                sys.stdout.write(f"{prefix}{frame_txt}\n")
+                sys.stdout.flush()
+                prev_lines = frame_txt.count("\n") + 1
+            else:
+                # Non-TTY stream (e.g. test capture or pipe): write initial frame once cleanly
+                if step_idx == 0:
+                    sys.stdout.write(frame_txt + "\n")
+                    sys.stdout.flush()
+
+            if playing:
+                step_idx += 1
+
+            sleep_for = interval
+            if duration is not None:
+                rem = duration - (time.monotonic() - start_wall)
+                if rem <= 0:
+                    break
+                sleep_for = min(interval, rem)
+            time.sleep(max(0.002, sleep_for))
+    except KeyboardInterrupt:
+        pass
+    finally:
+        if old_term_attrs is not None and stdin_fd is not None:
+            try:
+                import termios
+
+                termios.tcsetattr(stdin_fd, termios.TCSADRAIN, old_term_attrs)
+            except Exception:
+                pass
+        if is_tty and ansi:
+            sys.stdout.write("\x1b[?25h")
+            sys.stdout.flush()

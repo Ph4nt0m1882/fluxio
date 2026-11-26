@@ -29,12 +29,32 @@ __all__ = [
     "NumberCell",
     "SubplotSlot",
     "ToolbarConfig",
+    "print",
     "render_spec_to_terminal",
     "resolve_cell_style",
     "resolve_theme",
     "save",
     "show",
 ]
+
+
+def print(
+    fig: Figure,
+    *,
+    duration: float | None = None,
+    fps: int | None = None,
+    controls: bool = True,
+    ansi: bool = True,
+    width: int | None = None,
+) -> None:
+    """Convenience wrapper calling `fig.print(...)` for live in-place terminal/Jupyter display."""
+    fig.print(
+        duration=duration,
+        fps=fps,
+        controls=controls,
+        ansi=ansi,
+        width=width,
+    )
 
 
 def save(

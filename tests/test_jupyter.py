@@ -23,8 +23,10 @@ def test_jupyter_notebook_persistence_across_cells(tmp_path):
             "fig"
         ),
         nbformat.v4.new_code_cell(
-            "# Cellule 4 : print(fig) dans Jupyter affiche le tableau TUI Unicode coloré\n"
-            "print(fig)"
+            "# Cellule 4 : print(fig) et fig.print(duration=...) dans Jupyter\n"
+            "dyn = fx.Figure(title='Live Console Jupyter', fps=15)\n"
+            "dyn.number(lambda t: round(10 + t * 100, 1), unit='pts', precision=1, label='Score')\n"
+            "dyn.print(duration=0.25, fps=15)"
         ),
     ]
 
@@ -52,8 +54,10 @@ def test_jupyter_notebook_persistence_across_cells(tmp_path):
     assert "Capteur A" in html2
     assert "Capteur B" in html2
 
-    # Cell 3 (`print(fig)`) outputs the Unicode TUI box to stdout stream inside Jupyter!
+    # Cell 3 (`dyn.print(duration=0.25)`) updates in-place via clear_output and leaves final frame!
     out3 = reloaded.cells[3].outputs
     stdout3 = "".join(o.get("text", "") for o in out3 if o.get("output_type") == "stream")
     assert "╭" in stdout3 and "╯" in stdout3
-    assert "Capteur A" in stdout3 and "Capteur B" in stdout3
+    assert "Live Console Jupyter" in stdout3
+    # Only the final in-place frame remains in the cell output (not 4 stacked frames!)
+    assert stdout3.count("Live Console Jupyter") == 1

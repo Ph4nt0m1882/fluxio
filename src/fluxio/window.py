@@ -87,8 +87,13 @@ def show(
 
     Uses `pywebview` native lightweight OS WebView when available, with automatic
     fallback to a frameless `--app` browser window or system browser.
-    Returns the local HTTP URL of the live server.
+    Pass `backend="terminal"` to animate in-place directly inside the terminal.
+    Returns the local HTTP URL of the live server (or `"terminal://"`).
     """
+    if backend == "terminal":
+        fig.print(duration=close_after)
+        return "terminal://"
+
     handle = _BackgroundServerHandle(fig, host=host, port=port).start()
     url = handle.http_url
     width, height = fig.size

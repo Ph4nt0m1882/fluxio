@@ -1,6 +1,8 @@
 """Core Figure container: subplot grid, `.style(...)`, `print(fig)` terminal TUI, Jupyter, and exports."""
 
 from __future__ import annotations
+import sys
+import time
 import uuid
 from collections.abc import Iterator, MutableMapping
 from pathlib import Path
@@ -13,7 +15,11 @@ from .protocol import (
     format_number_value,
 )
 from .render_2d import save_gif, save_png, save_svg, save_video
-from .text_render import render_spec_to_terminal
+from .text_render import (
+    get_active_ipython_kernel,
+    live_print_figure,
+    render_spec_to_terminal,
+)
 from .theme import BackgroundImage, Gradient, resolve_theme
 from .window import show as _show_window
 
@@ -225,6 +231,10 @@ class Figure:
         self.cells: list[NumberCell] = []
         self._occupied: set[tuple[int, int]] = set()
         self._slot_styles: dict[tuple[int, int], dict[str, Any]] = {}
+        self._str_call_count: int = 0
+        self._str_start_time: float | None = None
+        self._str_prev_lines: int = 0
+        self._str_last_ip_exec: Any = None
         _ = self.resolved_theme
 
     def _set_slot_style(self, row: int, col: int, updates: dict[str, Any]) -> None:
@@ -378,14 +388,79 @@ class Figure:
             ],
         }
 
-    def to_text(self, *, ansi: bool = True, width: int | None = None) -> str:
+    def to_text(
+        self,
+        *,
+        ansi: bool = True,
+        width: int | None = None,
+        t: float = 0.0,
+        step_index: int | None = 0,
+    ) -> str:
         """Render the Figure as a formatted Unicode TUI string (with optional ANSI TrueColor)."""
-        spec = self.to_spec(t=0.0, step_index=0)
+        spec = self.to_spec(t=t, step_index=step_index)
         return render_spec_to_terminal(spec, ansi=ansi, width=width)
 
+    def reset_print(self) -> Figure:
+        """Reset in-place cursor state for manual `print(fig)` loops."""
+        self._str_call_count = 0
+        self._str_start_time = None
+        self._str_prev_lines = 0
+        self._str_last_ip_exec = None
+        return self
+
+    def print(
+        self,
+        *,
+        duration: float | None = None,
+        fps: int | None = None,
+        controls: bool = True,
+        ansi: bool = True,
+        width: int | None = None,
+    ) -> None:
+        """Display the Figure in the terminal or Jupyter stdout, animating in-place if dynamic."""
+        live_print_figure(
+            self,
+            duration=duration,
+            fps=fps,
+            controls=controls,
+            ansi=ansi,
+            width=width,
+        )
+
     def __str__(self) -> str:
-        """Support `print(fig)` natively in any terminal with ANSI TrueColor & Unicode box-drawing."""
-        return self.to_text(ansi=True)
+        """Support `print(fig)` natively, updating in-place when called repeatedly in a loop!"""
+        ip = get_active_ipython_kernel()
+        if ip is not None:
+            exec_cnt = getattr(ip, "execution_count", None)
+            if exec_cnt != self._str_last_ip_exec:
+                self._str_prev_lines = 0
+                self._str_last_ip_exec = exec_cnt
+
+        now = time.monotonic()
+        if self._str_call_count == 0 or self._str_start_time is None:
+            self._str_start_time = now
+            t = 0.0
+        else:
+            t = now - self._str_start_time
+
+        step_idx = self._str_call_count
+        self._str_call_count += 1
+
+        rendered = self.to_text(ansi=True, t=t, step_index=step_idx)
+        is_tty = bool(getattr(sys.stdout, "isatty", lambda: False)())
+
+        if self._str_prev_lines > 0:
+            if is_tty:
+                prefix = f"\x1b[{self._str_prev_lines}A\r\x1b[J"
+                self._str_prev_lines = rendered.count("\n") + 1
+                return prefix + rendered
+            if ip is not None:
+                from IPython.display import clear_output  # type: ignore
+
+                clear_output(wait=True)
+
+        self._str_prev_lines = rendered.count("\n") + 1
+        return rendered
 
     def __repr__(self) -> str:
         label = f" '{self.title}'" if self.title else ""
