@@ -11,9 +11,7 @@ from PIL import Image, ImageColor
 
 VALID_ACCENT_SIDES = ("left", "right", "top", "bottom", "none")
 VALID_VARIANTS = ("classic", "reverse", "text")
-MONOSPACE_STACK = (
-    "'Noto Sans Mono', 'DejaVu Sans Mono', 'JetBrains Mono', 'Fira Code', ui-monospace, monospace"
-)
+MONOSPACE_STACK = "'Noto Sans Mono', 'DejaVu Sans Mono', 'JetBrains Mono', 'Fira Code', ui-monospace, monospace"
 
 PRESET_BASES: dict[str, dict[str, Any]] = {
     "dark": {
@@ -105,7 +103,9 @@ class BackgroundImage:
 
     def __post_init__(self) -> None:
         if self.fit not in ("cover", "contain", "stretch"):
-            raise ValueError("BackgroundImage fit must be 'cover', 'contain', or 'stretch'.")
+            raise ValueError(
+                "BackgroundImage fit must be 'cover', 'contain', or 'stretch'."
+            )
         self._data_url, self._luminance = self._load_and_analyze(self.source)
 
     @staticmethod
@@ -124,10 +124,14 @@ class BackgroundImage:
             raw = p.read_bytes()
             ext = p.suffix.lower().lstrip(".")
             mime = "jpeg" if ext in ("jpg", "jpeg") else (ext or "png")
-            data_url = f"data:image/{mime};base64,{base64.b64encode(raw).decode('ascii')}"
+            data_url = (
+                f"data:image/{mime};base64,{base64.b64encode(raw).decode('ascii')}"
+            )
 
         with Image.open(io.BytesIO(raw)) as img:
-            thumb = img.convert("RGB").resize((8, 8), resample=Image.Resampling.BILINEAR)
+            thumb = img.convert("RGB").resize(
+                (8, 8), resample=Image.Resampling.BILINEAR
+            )
             raw_bytes = thumb.tobytes()
             n_px = max(1, len(raw_bytes) // 3)
             total = 0.0
@@ -189,10 +193,18 @@ def _normalize_background(
         return col, {"type": "solid", "color": col}, False, hex_luminance(col)
 
     if isinstance(bg_input, str):
-        spec = {"type": "transparent"} if transparent_flag else {"type": "solid", "color": bg_input}
+        spec = (
+            {"type": "transparent"}
+            if transparent_flag
+            else {"type": "solid", "color": bg_input}
+        )
         return bg_input, spec, transparent_flag, hex_luminance(bg_input)
 
-    spec = {"type": "transparent"} if transparent_flag else {"type": "solid", "color": fallback_hex}
+    spec = (
+        {"type": "transparent"}
+        if transparent_flag
+        else {"type": "solid", "color": fallback_hex}
+    )
     return fallback_hex, spec, transparent_flag, hex_luminance(fallback_hex)
 
 

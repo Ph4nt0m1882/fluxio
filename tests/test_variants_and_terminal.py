@@ -6,9 +6,15 @@ import fluxio as fx
 def test_print_fig_ansi_truecolor_and_grid_spans(capsys):
     fig = fx.Figure(rows=2, cols=2, title="Terminal Dashboard")
     fig.style(accent="#38bdf8", accent_side="left")
-    fig.number(99.95, unit="%", precision=2, label="Uptime Global", row=0, col=0, col_span=2)
-    fig[1, 0].style(accent="#34d399", accent_side="left").number(42.5, unit="°C", precision=1, label="SoC")
-    fig[1, 1].style(accent="#f59e0b", accent_side="right").number(1280, unit="req/s", label="Trafic")
+    fig.number(
+        99.95, unit="%", precision=2, label="Uptime Global", row=0, col=0, col_span=2
+    )
+    fig[1, 0].style(accent="#34d399", accent_side="left").number(
+        42.5, unit="°C", precision=1, label="SoC"
+    )
+    fig[1, 1].style(accent="#f59e0b", accent_side="right").number(
+        1280, unit="req/s", label="Trafic"
+    )
 
     # print(fig) works on ANY figure (even classic!)
     print(fig)
@@ -41,7 +47,9 @@ def test_export_plain_txt_without_ansi(tmp_path):
 
 
 def test_reverse_variant_fills_card_with_accent_and_translucent_text(tmp_path):
-    fig = fx.Figure(rows=1, cols=2, title="Comparaison Classic vs Reverse", size=(800, 400))
+    fig = fx.Figure(
+        rows=1, cols=2, title="Comparaison Classic vs Reverse", size=(800, 400)
+    )
     fig.style(theme="presentation", accent="#2563eb", accent_side="left")
     # Cell (0,0): classic
     fig[0, 0].number(84.2, unit="%", precision=1, label="Mode Classic")
@@ -74,7 +82,9 @@ def test_text_variant_graphical_exports_and_html(tmp_path):
     fig = fx.Figure(rows=1, cols=2, title="Mode TUI Graphique", size=(800, 400))
     fig.style(variant="text", accent="#38bdf8", accent_side="left")
     fig[0, 0].number(42.5, unit="°C", precision=1, label="CPU")
-    fig[0, 1].style(accent="#34d399", accent_side="right").number(1024, unit="Mo", label="RAM")
+    fig[0, 1].style(accent="#34d399", accent_side="right").number(
+        1024, unit="Mo", label="RAM"
+    )
 
     png_path = tmp_path / "tui.png"
     svg_path = tmp_path / "tui.svg"
@@ -85,8 +95,12 @@ def test_text_variant_graphical_exports_and_html(tmp_path):
     fig.save(html_path)
 
     assert png_path.exists() and png_path.stat().st_size > 2000
-    assert svg_path.exists() and "Mode TUI Graphique" in svg_path.read_text(encoding="utf-8")
-    assert '"variant": "text"' in html_path.read_text(encoding="utf-8") or '"variant":"text"' in html_path.read_text(encoding="utf-8")
+    assert svg_path.exists() and "Mode TUI Graphique" in svg_path.read_text(
+        encoding="utf-8"
+    )
+    assert '"variant": "text"' in html_path.read_text(
+        encoding="utf-8"
+    ) or '"variant":"text"' in html_path.read_text(encoding="utf-8")
 
 
 def test_repeated_print_fig_advances_dynamic_values_and_tty_cursor_up(monkeypatch):
@@ -124,3 +138,20 @@ def test_fig_print_and_fx_print_live_duration(capsys):
     fx.print(fig, duration=0.12, fps=20, controls=False)
     out2 = capsys.readouterr().out
     assert "Auto Live Print" in out2
+
+
+def test_terminal_svg_export_valid_xml_and_braille_vectors(tmp_path):
+    import math
+    import xml.etree.ElementTree as ET
+
+    xs = [i * 0.25 for i in range(20)]
+    p = fx.Plot(xs, [math.sin(x) for x in xs], label="sin(x)", title="Console Vector")
+    p.plot(xs, [math.cos(x) for x in xs], label="cos(x)", color="#f97316", linestyle="dashed")
+
+    out = p.save(tmp_path / "console.term.svg")
+    svg_src = out.read_text(encoding="utf-8")
+    root = ET.fromstring(svg_src)
+    assert root.tag.endswith("svg")
+    # Contains TrueColor orange (#f97316) and vector Braille dot circles
+    assert "#f97316" in svg_src
+    assert "<circle" in svg_src

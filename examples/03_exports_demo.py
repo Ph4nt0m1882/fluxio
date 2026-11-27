@@ -16,7 +16,9 @@ def _make_sample_corporate_wallpaper(path: Path) -> Path:
     img = Image.new("RGB", (w, h), (241, 245, 249))
     draw = ImageDraw.Draw(img, "RGBA")
     draw.polygon([(0, 0), (540, 0), (260, h), (0, h)], fill=(219, 234, 254, 190))
-    draw.polygon([(w - 460, 0), (w, 0), (w, h), (w - 720, h)], fill=(224, 231, 255, 180))
+    draw.polygon(
+        [(w - 460, 0), (w, 0), (w, h), (w - 720, h)], fill=(224, 231, 255, 180)
+    )
     draw.ellipse([w - 340, -140, w + 120, 320], fill=(199, 210, 254, 140))
     img.save(path)
     return path
@@ -118,7 +120,9 @@ def main() -> None:
         precision=1,
         label="Température Magma",
     )
-    dyn_fig[0, 1].style(variant="reverse", accent_side="right", accent="#2563eb").number(
+    dyn_fig[0, 1].style(
+        variant="reverse", accent_side="right", accent="#2563eb"
+    ).number(
         lambda t: 1.0 + t * 4.5,
         unit="MPa",
         precision=2,
@@ -134,7 +138,18 @@ def main() -> None:
     print(tui_fig)
     print("----------------------------------------------------------\n")
 
-    for p in (p_png, p_tui_png, p_dark_png, p_trans, p_svg, p_txt, p_gif, p_mp4, p_html, p_tui_html):
+    for p in (
+        p_png,
+        p_tui_png,
+        p_dark_png,
+        p_trans,
+        p_svg,
+        p_txt,
+        p_gif,
+        p_mp4,
+        p_html,
+        p_tui_html,
+    ):
         size_kb = p.stat().st_size / 1024
         print(f"OK  {p.name:<30} ({size_kb:6.1f} Ko) -> {p}")
 

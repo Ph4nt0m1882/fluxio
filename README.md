@@ -46,28 +46,32 @@ corepack pnpm test
 
 ---
 
-## 2. Tutoriel : Premiers pas et personnalisation des styles
+## 2. Tutoriel : Du plus simple au temps réel
 
-### A. Votre première visualisation
+### A. L'exemple le plus minimaliste (2 lignes)
 
-En quelques lignes, créez une `Figure`, ajoutez une valeur et affichez-la :
+Chaque visualisation (`fx.Plot`, `fx.Number`…) hérite de `fx.Visual` et fonctionne **directement toute seule**, sans même avoir besoin de créer une `Figure` :
 
 ```python
 import fluxio as fx
 
-fig = fx.Figure(title="Premier Affichage Fluxio", size=(780, 320))
-fig.number(
+fx.Plot([12, 28, 19, 37, 31, 46]).show()   # Fenêtre interactive (x = 0..5 déduit automatiquement !)
+# ou : print(fx.Plot([12, 28, 19, 37, 31, 46]))  -> Courbe Braille haute résolution dans le terminal !
+```
+
+Et pour un simple indicateur numérique :
+
+```python
+import fluxio as fx
+
+fx.Number(
     42.5,
     unit="°C",
     precision=1,
     label="Température Capteur",
+    title="Premier Affichage Fluxio",
     description="Configuration par défaut (thème dark)",
-)
-
-# En script Python : ouvre une fenêtre dédiée interactive (zoom, déplacement, capture PNG)
-fx.show(fig)
-
-# Dans Jupyter Notebook : placez simplement `fig` en dernière ligne de cellule !
+).show()
 ```
 
 <p align="center">
@@ -155,7 +159,13 @@ fig = fx.Figure(
 )
 fig.style(variant="text", accent="#38bdf8", accent_side="left")
 
-fig[0, 0].number(43.8, unit="°C", precision=1, label="SoC RasPi", description="Capteur thermique nominal")
+fig[0, 0].number(
+    43.8,
+    unit="°C",
+    precision=1,
+    label="SoC RasPi",
+    description="Capteur thermique nominal",
+)
 fig[0, 1].style(accent="#34d399", accent_side="right").number(
     1280, unit="req/s", label="Débit API", description="Moyenne glissante 10s"
 )
@@ -171,20 +181,11 @@ fig.print()  # (équivalent à fx.print(fig))
 fx.show(fig)
 ```
 
-Sortie dans le terminal avec `print(fig)` :
+Sortie dans le terminal avec `print(fig)` (exportable aussi en vecteur fidèle via `fig.save("console.term.svg")`) :
 
-```text
-▸ Variante Texte (TUI / Console)
-  Rendu identique dans une fenêtre graphique, Jupyter ou le terminal via print(fig)
-
-╭─┤ SoC RasPi ├───────────────────────╮  ╭─┤ Débit API ├───────────────────────╮
-┃          █ █ ▀▀█   █▀█              │  │        ▄█  ▀▀█ █▀█ █▀█              ┃
-┃          ▀▀█  ▀█   █▀█              │  │         █  █▀▀ █▀█ █ █              ┃
-┃            █ ▄▄█ ▄ █▄█ °C           │  │        ▄█▄ █▄▄ █▄█ █▄█ req/s        ┃
-┃                                     │  │                                     ┃
-┃      Capteur thermique nominal      │  │        Moyenne glissante 10s        ┃
-╰─────────────────────────────────────╯  ╰─────────────────────────────────────╯
-```
+<p align="center">
+  <img src=".github/assets/demo_03_terminal.svg" alt="Sortie Terminal ANSI TrueColor" width="860" />
+</p>
 
 Et le rendu graphique correspondant (`fx.show(fig)`, Jupyter ou `fig.save(...)`) avec `variant="text"` :
 
@@ -194,38 +195,57 @@ Et le rendu graphique correspondant (`fx.show(fig)`, Jupyter ou `fig.save(...)`)
 
 ---
 
-### D. Valeurs dynamiques (temps réel) & Exports multi-formats
+### D. Courbes & Indicateurs Temps Réel + Exports multi-formats
 
-`fig.number(...)` accepte aussi une **fonction du temps `t`** (en secondes) ou directement un **générateur Python (`yield`)** :
+Toutes les visualisations (`Plot`, `Number`, etc.) acceptent aussi une **fonction du temps `f(t)`** (en secondes) ou directement un **générateur Python (`yield`)**, aussi bien en fenêtre live qu'en export `.gif` / `.mp4` :
+
+<p align="center">
+  <img src=".github/assets/demo_04_live_plot.gif" alt="Animation Temps Réel Plot + Number" width="860" />
+</p>
 
 ```python
 import itertools
 import math
 import fluxio as fx
 
+
 def compteur_paquets():
     for i in itertools.count(1):
         yield i * 12
 
+
+xs = [i * 0.1 for i in range(65)]
 fig = fx.Figure(rows=1, cols=2, title="Flux Temps Réel", fps=24)
 fig.style(background=fx.Gradient(["#090d16", "#1e1b4b"], angle=135))
 
-fig[0, 0].number(lambda t: 850 + 120 * math.sin(t * 2), unit="°C", precision=1, label="Magma")
-fig[0, 1].number(compteur_paquets(), unit="pkt", label="Flux Réseau")
+fig[0, 0].plot(
+    xs,
+    lambda t: [math.sin(x - t * 2.5) for x in xs],
+    fill=True,
+    title="Onde Live",
+    color="#38bdf8",
+)
+fig[0, 1].number(compteur_paquets(), unit="pkt", label="Flux Réseau", color="#a855f7")
 
-# Exports directs (sans navigateur lourd) :
-fig.save("capture.png", scale=2.0)                 # Image PNG haute définition
-fig.save("vecteur.svg")                            # SVG vectoriel infini
-fig.save("animation.gif", duration=3.0, fps=15)    # GIF animé
-fig.save("video.mp4", duration=3.0, fps=24)        # Vidéo MP4 (H.264)
-fig.save("autonome.html", duration=3.0, fps=24)    # Fichier HTML interactif 100 % autonome
-fig.save("rapport.txt")                            # Tableau Unicode brut sans codes ANSI
+# Exports directs (sans navigateur lourd ni Chromium) :
+fig.save("capture.png", scale=2.0)  # Image PNG haute définition
+fig.save("vecteur.svg")  # SVG vectoriel infini
+fig.save("animation.gif", duration=3.0, fps=15)  # GIF animé fluide
+fig.save("video.mp4", duration=3.0, fps=24)  # Vidéo MP4 (H.264)
+fig.save("autonome.html", duration=3.0, fps=24)  # Fichier HTML interactif 100 % autonome
+fig.save("rapport.txt")  # Rendu Unicode + Braille 2×4 sans codes ANSI
 ```
 
 ---
 
+## Documentation complète & Intégration IA
+
+* **Tutoriel pas-à-pas & Galerie visuelle** : lancez `uv run mkdocs serve` (ou consultez [`docs/tutorial.md`](docs/tutorial.md) et [`docs/charts/index.md`](docs/charts/index.md)).
+* **Contexte LLM prêt à l'emploi** : [`llms.txt`](llms.txt) (compact), [`llms-full.txt`](llms-full.txt) (complet), [`docs/fluxio.pyi`](docs/fluxio.pyi) (stubs typés) ou directement en Python via `fx.llm_context("compact")`.
+
 ## Exemples prêts à lancer
 
+* [`examples/all_examples/`](examples/all_examples/) : **1 notebook Jupyter pré-exécuté par visualisation** ([`number.ipynb`](examples/all_examples/number.ipynb), [`plot.ipynb`](examples/all_examples/plot.ipynb), etc.) montrant tous les cas d'usage (minimal, multi-séries, variantes `classic`/`reverse`/`text`, animations temps réel et `print`).
 * [`examples/01_window_demo.py`](examples/01_window_demo.py) : démonstration hybride `print(fig)` + fenêtre interactive (`--variant classic|reverse|text`, `--no-window`).
-* [`examples/02_notebook_demo.ipynb`](examples/02_notebook_demo.ipynb) : persistance multi-cellules et styles dans Jupyter Notebook.
 * [`examples/03_exports_demo.py`](examples/03_exports_demo.py) : génération de tous les formats d'export dans `examples/out/`.
+* [`examples/04_plot_demo.py`](examples/04_plot_demo.py) : courbes 2D multi-séries, lissage, aire sous la courbe, terminal Braille `2×4` et temps réel.

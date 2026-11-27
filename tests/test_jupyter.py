@@ -41,7 +41,9 @@ def test_jupyter_notebook_persistence_across_cells(tmp_path):
     # Cell 0 still has its rich HTML output with Capteur A
     out0 = reloaded.cells[0].outputs
     assert any("text/html" in o.get("data", {}) for o in out0)
-    html0 = next(o["data"]["text/html"] for o in out0 if "text/html" in o.get("data", {}))
+    html0 = next(
+        o["data"]["text/html"] for o in out0 if "text/html" in o.get("data", {})
+    )
     assert "Capteur A" in html0
 
     # Cell 1 has 42
@@ -50,13 +52,17 @@ def test_jupyter_notebook_persistence_across_cells(tmp_path):
 
     # Cell 2 has BOTH Capteur A and Capteur B in its rendered figure!
     out2 = reloaded.cells[2].outputs
-    html2 = next(o["data"]["text/html"] for o in out2 if "text/html" in o.get("data", {}))
+    html2 = next(
+        o["data"]["text/html"] for o in out2 if "text/html" in o.get("data", {})
+    )
     assert "Capteur A" in html2
     assert "Capteur B" in html2
 
     # Cell 3 (`dyn.print(duration=0.25)`) updates in-place via clear_output and leaves final frame!
     out3 = reloaded.cells[3].outputs
-    stdout3 = "".join(o.get("text", "") for o in out3 if o.get("output_type") == "stream")
+    stdout3 = "".join(
+        o.get("text", "") for o in out3 if o.get("output_type") == "stream"
+    )
     assert "╭" in stdout3 and "╯" in stdout3
     assert "Live Console Jupyter" in stdout3
     # Only the final in-place frame remains in the cell output (not 4 stacked frames!)

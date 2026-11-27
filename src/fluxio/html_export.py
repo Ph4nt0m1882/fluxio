@@ -88,6 +88,6 @@ def render_jupyter_html(spec: dict[str, Any]) -> str:
         f'<div style="width:100%; max-width:{int(spec.get("size", [900, 420])[0])}px; margin:6px 0;">'
         f'<iframe srcdoc="{escaped_srcdoc}" '
         f'style="width:100%; height:{h}px; border:none; border-radius:12px; display:block;" '
-        f'allowfullscreen></iframe>'
+        f"allowfullscreen></iframe>"
         f"</div>"
     )

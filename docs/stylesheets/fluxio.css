@@ -1,0 +1,260 @@
+/* Fluxio Custom MkDocs Theme — Translucent Cards, Tapered Crescents & Smooth Hover */
+
+:root,
+[data-md-color-scheme="slate"] {
+  --md-default-bg-color: #0b1120;
+  --md-default-bg-color--light: #111a2e;
+  --md-primary-fg-color: #0f172a;
+  --md-accent-fg-color: #38bdf8;
+  --fx-card-bg: rgba(255, 255, 255, 0.055);
+  --fx-card-bg-hover: rgba(255, 255, 255, 0.09);
+  --fx-card-text: #f8fafc;
+  --fx-card-muted: #94a3b8;
+}
+
+[data-md-color-scheme="default"] {
+  --fx-card-bg: rgba(15, 23, 42, 0.04);
+  --fx-card-bg-hover: rgba(15, 23, 42, 0.075);
+  --fx-card-text: #0f172a;
+  --fx-card-muted: #475569;
+}
+
+/* Hero Banner on Home Page */
+.fx-hero {
+  margin-bottom: 2rem;
+  text-align: center;
+}
+
+.fx-hero img {
+  width: 100%;
+  max-height: 340px;
+  object-fit: cover;
+  border-radius: 20px;
+  border: 1.5px solid rgba(56, 189, 248, 0.35);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
+}
+
+.fx-hero-subtitle {
+  margin: 1.1rem auto 0.4rem;
+  max-width: 720px;
+  font-size: 1.08rem;
+  color: var(--fx-card-muted);
+}
+
+/* 2x2 Grid of Fluxio-Styled Section Cards */
+.fx-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.25rem;
+  margin: 1.75rem 0 2.25rem;
+}
+
+@media (max-width: 760px) {
+  .fx-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Authentic Fluxio Card: Translucent Veil + Tapered Crescent Border + Smooth 220ms Hover */
+.fx-card {
+  --fx-accent: #38bdf8;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 1.45rem 1.6rem;
+  border-radius: 20px;
+  background: var(--fx-card-bg);
+  text-decoration: none !important;
+  color: var(--fx-card-text) !important;
+  border: 1.6px solid color-mix(in srgb, var(--fx-accent) 42%, transparent);
+  border-left-width: 7px;
+  border-left-color: var(--fx-accent);
+  transition:
+    background 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.fx-card.fx-right {
+  border-left-width: 1.6px;
+  border-left-color: color-mix(in srgb, var(--fx-accent) 42%, transparent);
+  border-right-width: 7px;
+  border-right-color: var(--fx-accent);
+}
+
+.fx-card:hover {
+  background: var(--fx-card-bg-hover);
+  border-color: var(--fx-accent);
+  transform: translateY(-2px);
+  box-shadow: 0 10px 28px color-mix(in srgb, var(--fx-accent) 16%, transparent);
+}
+
+.fx-card-kicker {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fx-accent);
+  margin-bottom: 0.35rem;
+}
+
+.fx-card-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin: 0 0 0.5rem;
+  color: var(--fx-card-text);
+}
+
+.fx-card-desc {
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--fx-card-muted);
+  margin: 0 0 1rem;
+}
+
+.fx-card-cta {
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--fx-accent);
+}
+
+/* Color Variants matching Fluxio's Palette */
+.fx-cyan { --fx-accent: #38bdf8; }
+.fx-emerald { --fx-accent: #34d399; }
+.fx-orange { --fx-accent: #f97316; }
+.fx-purple { --fx-accent: #a78bfa; }
+
+/* Visual Charts Gallery Cards (with Python-generated thumbnails!) */
+.fx-gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(310px, 1fr));
+  gap: 1.3rem;
+  margin: 1.5rem 0 2rem;
+}
+
+.fx-gallery-card {
+  --fx-accent: #38bdf8;
+  display: flex;
+  flex-direction: column;
+  border-radius: 18px;
+  overflow: hidden;
+  background: var(--fx-card-bg);
+  border: 1.6px solid color-mix(in srgb, var(--fx-accent) 40%, transparent);
+  border-top-width: 5px;
+  border-top-color: var(--fx-accent);
+  text-decoration: none !important;
+  color: var(--fx-card-text) !important;
+  transition:
+    background 220ms ease,
+    border-color 220ms ease,
+    transform 220ms ease,
+    box-shadow 220ms ease;
+}
+
+.fx-gallery-card:hover {
+  background: var(--fx-card-bg-hover);
+  border-color: var(--fx-accent);
+  transform: translateY(-3px);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.28);
+}
+
+.fx-gallery-thumb {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  display: block;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.15);
+}
+
+.fx-gallery-body {
+  padding: 1rem 1.2rem 1.15rem;
+}
+
+.fx-gallery-badge {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--fx-accent) 18%, transparent);
+  color: var(--fx-accent);
+  margin-bottom: 0.45rem;
+}
+
+.fx-gallery-title {
+  font-size: 1.08rem;
+  font-weight: 700;
+  margin: 0 0 0.3rem;
+}
+
+.fx-gallery-desc {
+  font-size: 0.84rem;
+  color: var(--fx-card-muted);
+  margin: 0;
+}
+
+/* Chart Preview Image inside individual chart pages */
+.fx-chart-preview {
+  width: 100%;
+  max-width: 760px;
+  border-radius: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.28);
+  margin: 0.75rem 0 1.25rem;
+}
+
+/* Readable inline code badges inside MkDocs tabbed headers */
+.md-typeset .tabbed-labels > label code {
+  background: rgba(56, 189, 248, 0.14);
+  color: #38bdf8;
+  padding: 0.08rem 0.35rem;
+  border-radius: 5px;
+  font-weight: 600;
+}
+
+[data-md-color-scheme="default"] .md-typeset .tabbed-labels > label code {
+  background: rgba(2, 132, 199, 0.12);
+  color: #0284c7;
+}
+
+/* Tight line-height for plain ASCII trees (`docs/developer.md`) */
+.md-typeset .language-text pre > code {
+  line-height: 1.25;
+}
+
+/* Styled Previous / Next Footer Buttons matching Fluxio Crescent Cards! */
+.md-footer__inner {
+  gap: 1rem;
+  padding: 0.8rem 0.6rem;
+}
+
+.md-footer__link {
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1.4px solid rgba(56, 189, 248, 0.35);
+  padding: 0.65rem 1rem !important;
+  margin-top: 0.4rem;
+  margin-bottom: 0.4rem;
+  transition: background 200ms ease, border-color 200ms ease, transform 200ms ease !important;
+}
+
+.md-footer__link--prev {
+  border-left-width: 5px;
+  border-left-color: #38bdf8;
+}
+
+.md-footer__link--next {
+  border-right-width: 5px;
+  border-right-color: #34d399;
+}
+
+.md-footer__link:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: #38bdf8;
+  transform: translateY(-1px);
+  opacity: 1 !important;
+}

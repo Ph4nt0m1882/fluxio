@@ -1,23 +1,22 @@
-"""Core Figure container: subplot grid, `.style(...)`, `print(fig)` terminal TUI, Jupyter, and exports."""
+"""Core Figure container: subplot grid, `.style(...)`, hybrid `Visual` composition, and exports."""
 
 from __future__ import annotations
+
 import sys
 import time
 import uuid
-from collections.abc import Iterator, MutableMapping
+from collections.abc import Iterator, MutableMapping, Sequence
 from pathlib import Path
 from typing import Any
+
+from .charts import Number, NumberSource, Plot, Visual
 from .html_export import render_jupyter_html, render_standalone_html
-from .protocol import (
-    NumberCell,
-    NumberSource,
-    ToolbarConfig,
-    format_number_value,
-)
+from .protocol import ToolbarConfig
 from .render_2d import save_gif, save_png, save_svg, save_video
 from .text_render import (
     get_active_ipython_kernel,
     live_print_figure,
+    render_ansi_to_svg,
     render_spec_to_terminal,
 )
 from .theme import BackgroundImage, Gradient, resolve_theme
@@ -167,6 +166,22 @@ class SubplotSlot:
         self._figure._set_slot_style(self._row, self._col, clean)
         return self
 
+    def add(
+        self,
+        visual: Visual,
+        *,
+        row_span: int | None = None,
+        col_span: int | None = None,
+    ) -> Visual:
+        """Place a `Visual` instance at this `(row, col)` grid slot."""
+        return self._figure.add(
+            visual,
+            row=self._row,
+            col=self._col,
+            row_span=row_span,
+            col_span=col_span,
+        )
+
     def number(
         self,
         value: NumberSource,
@@ -179,7 +194,7 @@ class SubplotSlot:
         description: str = "",
         row_span: int = 1,
         col_span: int = 1,
-    ) -> NumberCell:
+    ) -> Number:
         return self._figure.number(
             value,
             label=label,
@@ -187,6 +202,67 @@ class SubplotSlot:
             prefix=prefix,
             precision=precision,
             color=color,
+            description=description,
+            row=self._row,
+            col=self._col,
+            row_span=row_span,
+            col_span=col_span,
+        )
+
+    def plot(
+        self,
+        x_or_y: Any,
+        y: Any = None,
+        *,
+        label: str = "",
+        color: str | None = None,
+        linewidth: float = 2.4,
+        linestyle: str = "solid",
+        marker: str | None = None,
+        fill: bool | None = None,
+        fill_alpha: float = 0.12,
+        max_points: int = 120,
+        card_title: str = "",
+        xlabel: str = "",
+        ylabel: str = "",
+        xlim: Sequence[float | None] | None = None,
+        ylim: Sequence[float | None] | None = None,
+        xmin: float | None = None,
+        xmax: float | None = None,
+        xstep: float | None = None,
+        ymin: float | None = None,
+        ymax: float | None = None,
+        ystep: float | None = None,
+        grid: bool = True,
+        legend: bool | str = True,
+        description: str = "",
+        row_span: int = 1,
+        col_span: int = 1,
+    ) -> Plot:
+        return self._figure.plot(
+            x_or_y,
+            y,
+            label=label,
+            color=color,
+            linewidth=linewidth,
+            linestyle=linestyle,
+            marker=marker,
+            fill=fill,
+            fill_alpha=fill_alpha,
+            max_points=max_points,
+            card_title=card_title,
+            xlabel=xlabel,
+            ylabel=ylabel,
+            xlim=xlim,
+            ylim=ylim,
+            xmin=xmin,
+            xmax=xmax,
+            xstep=xstep,
+            ymin=ymin,
+            ymax=ymax,
+            ystep=ystep,
+            grid=grid,
+            legend=legend,
             description=description,
             row=self._row,
             col=self._col,
@@ -208,7 +284,7 @@ class Figure:
         theme: str = "dark",
         style: dict[str, Any] | None = None,
         size: tuple[int, int] = (900, 520),
-        fps: int = 30,
+        fps: int = 60,
         toolbar: bool | dict[str, bool] = True,
     ) -> None:
         if rows < 1 or cols < 1:
@@ -228,7 +304,7 @@ class Figure:
         else:
             self.toolbar = ToolbarConfig(**toolbar)
 
-        self.cells: list[NumberCell] = []
+        self.cells: list[Visual] = []
         self._occupied: set[tuple[int, int]] = set()
         self._slot_styles: dict[tuple[int, int], dict[str, Any]] = {}
         self._str_call_count: int = 0
@@ -252,13 +328,25 @@ class Figure:
     def is_dynamic(self) -> bool:
         return any(c.is_dynamic for c in self.cells)
 
-    def __getitem__(self, key: tuple[int, int] | int) -> SubplotSlot:
+    def _parse_grid_key(self, key: tuple[int, int] | int) -> tuple[int, int]:
         if isinstance(key, int):
             row, col = divmod(key, self.cols)
         else:
             row, col = key
         self._validate_bounds(row, col, 1, 1)
+        return row, col
+
+    def __getitem__(self, key: tuple[int, int] | int) -> SubplotSlot:
+        row, col = self._parse_grid_key(key)
         return SubplotSlot(self, row, col)
+
+    def __setitem__(self, key: tuple[int, int] | int, visual: Visual) -> None:
+        if not isinstance(visual, Visual):
+            raise TypeError(
+                f"Expected a fluxio.Visual instance (e.g. fx.Number), got {type(visual).__name__}."
+            )
+        row, col = self._parse_grid_key(key)
+        self.add(visual, row=row, col=col)
 
     def _validate_bounds(
         self,
@@ -287,6 +375,53 @@ class Figure:
             f"All slots in Figure ({self.rows}x{self.cols}) are already occupied."
         )
 
+    def add(
+        self,
+        visual: Visual,
+        *,
+        row: int | None = None,
+        col: int | None = None,
+        row_span: int | None = None,
+        col_span: int | None = None,
+    ) -> Visual:
+        """Attach any `Visual` subclass instance to the Figure grid."""
+        if not isinstance(visual, Visual):
+            raise TypeError(
+                f"Expected a fluxio.Visual instance, got {type(visual).__name__}."
+            )
+
+        if row is None and col is None:
+            row, col = self._find_next_free_slot()
+        elif row is None or col is None:
+            raise ValueError(
+                "Specify both row and col, or omit both for auto-placement."
+            )
+
+        r_span = row_span if row_span is not None else visual.row_span
+        c_span = col_span if col_span is not None else visual.col_span
+        self._validate_bounds(row, col, r_span, c_span)
+
+        slots = {
+            (r, c) for r in range(row, row + r_span) for c in range(col, col + c_span)
+        }
+        overlap = slots & self._occupied
+        if overlap:
+            raise ValueError(f"Grid cell(s) {sorted(overlap)} already occupied.")
+
+        self._occupied |= slots
+        visual.id = f"cell_{row}_{col}"
+        visual.row = row
+        visual.col = col
+        visual.row_span = r_span
+        visual.col_span = c_span
+
+        pending_slot_style = self._slot_styles.get((row, col))
+        if pending_slot_style:
+            visual._apply_slot_defaults(pending_slot_style)
+
+        self.cells.append(visual)
+        return visual
+
     def number(
         self,
         value: NumberSource,
@@ -301,30 +436,10 @@ class Figure:
         col: int | None = None,
         row_span: int = 1,
         col_span: int = 1,
-    ) -> NumberCell:
-        """Add a static or dynamic numeric display widget to the Figure grid."""
-        if row is None and col is None:
-            row, col = self._find_next_free_slot()
-        elif row is None or col is None:
-            raise ValueError("Specify both row and col, or omit both for auto-placement.")
-
-        self._validate_bounds(row, col, row_span, col_span)
-        slots = {
-            (r, c)
-            for r in range(row, row + row_span)
-            for c in range(col, col + col_span)
-        }
-        overlap = slots & self._occupied
-        if overlap:
-            raise ValueError(f"Grid cell(s) {sorted(overlap)} already occupied.")
-
-        self._occupied |= slots
-        pending_style = dict(self._slot_styles.get((row, col), {}))
-        cell = NumberCell(
-            id=f"cell_{row}_{col}",
-            row=row,
-            col=col,
-            source=value,
+    ) -> Number:
+        """Add a static or dynamic `Number` indicator widget to the Figure grid."""
+        visual = Number(
+            value,
             label=label,
             unit=unit,
             prefix=prefix,
@@ -333,10 +448,102 @@ class Figure:
             description=description,
             row_span=row_span,
             col_span=col_span,
-            _style_overrides=pending_style,
         )
-        self.cells.append(cell)
-        return cell
+        self.add(visual, row=row, col=col, row_span=row_span, col_span=col_span)
+        return visual
+
+    def plot(
+        self,
+        x_or_y: Any,
+        y: Any = None,
+        *,
+        label: str = "",
+        color: str | None = None,
+        linewidth: float = 2.4,
+        linestyle: str = "solid",
+        marker: str | None = None,
+        fill: bool | None = None,
+        fill_alpha: float = 0.12,
+        max_points: int = 120,
+        card_title: str = "",
+        xlabel: str = "",
+        ylabel: str = "",
+        xlim: Sequence[float | None] | None = None,
+        ylim: Sequence[float | None] | None = None,
+        xmin: float | None = None,
+        xmax: float | None = None,
+        xstep: float | None = None,
+        ymin: float | None = None,
+        ymax: float | None = None,
+        ystep: float | None = None,
+        grid: bool = True,
+        legend: bool | str = True,
+        description: str = "",
+        row: int | None = None,
+        col: int | None = None,
+        row_span: int = 1,
+        col_span: int = 1,
+    ) -> Plot:
+        """Add or superpose a 2D line series (`Plot`) on the target grid cell."""
+        if row is not None and col is not None:
+            for existing in self.cells:
+                if existing.row == row and existing.col == col:
+                    if isinstance(existing, Plot):
+                        return existing.plot(
+                            x_or_y,
+                            y,
+                            label=label,
+                            color=color,
+                            linewidth=linewidth,
+                            linestyle=linestyle,
+                            marker=marker,
+                            fill=fill,
+                            fill_alpha=fill_alpha,
+                            max_points=max_points,
+                            xlabel=xlabel or None,
+                            ylabel=ylabel or None,
+                            card_title=card_title or None,
+                            xlim=xlim,
+                            ylim=ylim,
+                            xmin=xmin,
+                            xmax=xmax,
+                            xstep=xstep,
+                            ymin=ymin,
+                            ymax=ymax,
+                            ystep=ystep,
+                        )
+                    break
+
+        visual = Plot(
+            x_or_y,
+            y,
+            label=label,
+            color=color,
+            linewidth=linewidth,
+            linestyle=linestyle,
+            marker=marker,
+            fill=fill,
+            fill_alpha=fill_alpha,
+            max_points=max_points,
+            card_title=card_title,
+            xlabel=xlabel,
+            ylabel=ylabel,
+            xlim=xlim,
+            ylim=ylim,
+            xmin=xmin,
+            xmax=xmax,
+            xstep=xstep,
+            ymin=ymin,
+            ymax=ymax,
+            ystep=ystep,
+            grid=grid,
+            legend=legend,
+            description=description,
+            row_span=row_span,
+            col_span=col_span,
+        )
+        self.add(visual, row=row, col=col, row_span=row_span, col_span=col_span)
+        return visual
 
     def evaluate_frame(
         self,
@@ -344,17 +551,11 @@ class Figure:
         *,
         step_index: int | None = None,
     ) -> list[dict[str, Any]]:
-        updates: list[dict[str, Any]] = []
-        for cell in self.cells:
-            val = cell.evaluate_at(t, step_index=step_index)
-            updates.append(
-                {
-                    "id": cell.id,
-                    "value": val,
-                    "formatted": format_number_value(val, cell.precision, cell.prefix),
-                }
-            )
-        return updates
+        return [
+            cell.evaluate_tick_update(t, step_index=step_index)
+            for cell in self.cells
+            if cell.is_dynamic
+        ]
 
     def to_spec(
         self,
@@ -396,12 +597,10 @@ class Figure:
         t: float = 0.0,
         step_index: int | None = 0,
     ) -> str:
-        """Render the Figure as a formatted Unicode TUI string (with optional ANSI TrueColor)."""
         spec = self.to_spec(t=t, step_index=step_index)
         return render_spec_to_terminal(spec, ansi=ansi, width=width)
 
     def reset_print(self) -> Figure:
-        """Reset in-place cursor state for manual `print(fig)` loops."""
         self._str_call_count = 0
         self._str_start_time = None
         self._str_prev_lines = 0
@@ -417,7 +616,6 @@ class Figure:
         ansi: bool = True,
         width: int | None = None,
     ) -> None:
-        """Display the Figure in the terminal or Jupyter stdout, animating in-place if dynamic."""
         live_print_figure(
             self,
             duration=duration,
@@ -428,7 +626,6 @@ class Figure:
         )
 
     def __str__(self) -> str:
-        """Support `print(fig)` natively, updating in-place when called repeatedly in a loop!"""
         ip = get_active_ipython_kernel()
         if ip is not None:
             exec_cnt = getattr(ip, "execution_count", None)
@@ -467,9 +664,14 @@ class Figure:
         return f"<fluxio.Figure{label} grid={self.rows}x{self.cols} cells={len(self.cells)}>"
 
     def _repr_html_(self) -> str:
-        """Automatic rich inline rendering in Jupyter Notebooks (persists across cells & saves)."""
         bake = 5.0 if self.is_dynamic else None
-        spec = self.to_spec(t=0.0, step_index=0, bake_duration=bake)
+        old_fps = self.fps
+        if bake is not None and self.fps > 24:
+            self.fps = 24
+        try:
+            spec = self.to_spec(t=0.0, step_index=0, bake_duration=bake)
+        finally:
+            self.fps = old_fps
         return render_jupyter_html(spec)
 
     def show(
@@ -498,14 +700,20 @@ class Figure:
         fps: int | None = None,
         scale: float = 2.0,
     ) -> Path:
-        """Export the Figure to `.png`, `.svg`, `.gif`, `.mp4`, `.webm`, `.html`, `.txt`, or `.ans`."""
         out = Path(path)
         out.parent.mkdir(parents=True, exist_ok=True)
         ext = out.suffix.lower()
-        effective_fps = fps if fps is not None else self.fps
+        default_export_fps = min(20, self.fps) if ext == ".gif" else min(30, self.fps)
+        effective_fps = fps if fps is not None else default_export_fps
 
         if ext == ".png":
             save_png(self, out, scale=scale)
+        elif out.name.lower().endswith(".term.svg"):
+            svg_title = f"terminal — {self.title}" if self.title else "terminal — print(fig)"
+            out.write_text(
+                render_ansi_to_svg(self.to_text(ansi=True, width=76), title=svg_title),
+                encoding="utf-8",
+            )
         elif ext == ".svg":
             save_svg(self, out)
         elif ext == ".gif":

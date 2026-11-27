@@ -2,6 +2,7 @@ import {
   createInitialViewport,
   hitTestCell,
   panViewport,
+  screenToWorld,
   zoomViewportAt,
   type GridRect,
   type Viewport,
@@ -13,7 +14,11 @@ import {
   type FigureSpec,
   type ServerMessage,
 } from "./protocol";
-import { renderFigureToCanvas, TOOLBAR_ICONS } from "./renderer";
+import {
+  renderFigureToCanvas,
+  TOOLBAR_ICONS,
+  type CellLayerCacheEntry,
+} from "./renderer";
 import { stepHoverMap } from "./themes";
 
 export interface MountOptions {
@@ -51,10 +56,9 @@ const VIEWER_CSS = `
   gap: 4px;
   padding: 4px 6px;
   border-radius: 10px;
-  background: rgba(15, 23, 42, 0.78);
-  backdrop-filter: blur(8px);
-  border: 1px solid rgba(148, 163, 184, 0.25);
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22);
+  background: rgba(15, 23, 42, 0.92);
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.28);
   opacity: 0.86;
   transition: opacity 0.15s ease;
   z-index: 10;
@@ -135,12 +139,19 @@ export class FluxioViewer {
   private hoveredCellId: string | null = null;
   private hoverProgress = new Map<string, number>();
   private hoverAnimating = false;
+  private pointerWorld: { x: number; y: number } | null = null;
   private bgImage: HTMLImageElement | null = null;
 
   private playing = true;
   private ws: WebSocket | null = null;
   private wsConnected = false;
   private rafId: number | null = null;
+  private dirty = false;
+  private fullPaintNeeded = true;
+  private cachedWidth = 0;
+  private cachedHeight = 0;
+  private bgCache: { canvas: HTMLCanvasElement; key: string } | null = null;
+  private cellCache = new Map<string, CellLayerCacheEntry>();
   private startPerfTime = 0;
   private lastFramePerfTime = 0;
   private pausedElapsed = 0;
@@ -156,7 +167,13 @@ export class FluxioViewer {
 
     this.canvas = document.createElement("canvas");
     this.canvas.className = "fx-canvas";
-    const ctx = this.canvas.getContext("2d");
+    const wantAlpha = Boolean(
+      this.spec.theme.transparent ||
+        this.spec.theme.background_spec.type === "transparent",
+    );
+    const ctx =
+      this.canvas.getContext("2d", { alpha: wantAlpha }) ??
+      this.canvas.getContext("2d");
     if (!ctx) {
       throw new Error("Canvas 2D context unavailable");
     }
@@ -187,17 +204,20 @@ export class FluxioViewer {
     if (this.spec.dynamic) {
       this.ensureLoopRunning();
     } else {
-      this.draw();
+      this.drawNow();
     }
   }
 
   private prepareBackgroundImage(): void {
     const bg = this.spec.theme.background_spec;
+    this.bgCache = null;
+    this.cellCache.clear();
     if (bg.type === "image" && bg.data_url && typeof Image !== "undefined") {
       const img = new Image();
       img.onload = () => {
         this.bgImage = img;
-        this.draw();
+        this.bgCache = null;
+        this.scheduleDraw();
       };
       img.src = bg.data_url;
       this.bgImage = img;
@@ -283,6 +303,7 @@ export class FluxioViewer {
     if (nextId === this.hoveredCellId) return;
     this.hoveredCellId = nextId;
     this.hoverAnimating = true;
+    this.fullPaintNeeded = true;
     this.ensureLoopRunning();
   }
 
@@ -311,14 +332,21 @@ export class FluxioViewer {
         lastX = e.clientX;
         lastY = e.clientY;
         this.viewport = panViewport(this.viewport, dx, dy);
-        this.draw();
+        this.pointerWorld = screenToWorld(this.viewport, sx, sy);
+        this.scheduleDraw(true);
       } else {
+        this.pointerWorld = screenToWorld(this.viewport, sx, sy);
         const hit = hitTestCell(this.rects, this.viewport, sx, sy);
+        const prevHit = this.hoveredCellId;
         this.setHoveredCell(hit);
+        if (hit && hit === prevHit && !this.hoverAnimating) {
+          this.scheduleDraw(true);
+        }
       }
     });
 
     this.canvas.addEventListener("pointerleave", () => {
+      this.pointerWorld = null;
       this.setHoveredCell(null);
     });
 
@@ -351,35 +379,42 @@ export class FluxioViewer {
         const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
         this.viewport = zoomViewportAt(this.viewport, factor, sx, sy);
         this.updateZoomLabel();
-        this.draw();
+        this.scheduleDraw(true);
       },
       { passive: false },
     );
 
     if (typeof ResizeObserver !== "undefined") {
-      this.resizeObserver = new ResizeObserver(() => this.draw());
+      this.resizeObserver = new ResizeObserver((entries) => {
+        const cr = entries[0]?.contentRect;
+        if (cr && cr.width > 0 && cr.height > 0) {
+          this.cachedWidth = cr.width;
+          this.cachedHeight = cr.height;
+        }
+        this.scheduleDraw(true);
+      });
       this.resizeObserver.observe(this.root);
     } else {
-      window.addEventListener("resize", () => this.draw());
+      window.addEventListener("resize", () => {
+        this.cachedWidth = 0;
+        this.cachedHeight = 0;
+        this.scheduleDraw(true);
+      });
     }
   }
 
   private zoomCenter(factor: number): void {
-    const rect = this.canvas.getBoundingClientRect();
-    this.viewport = zoomViewportAt(
-      this.viewport,
-      factor,
-      rect.width / 2,
-      rect.height / 2,
-    );
+    const w = this.cachedWidth || this.canvas.getBoundingClientRect().width;
+    const h = this.cachedHeight || this.canvas.getBoundingClientRect().height;
+    this.viewport = zoomViewportAt(this.viewport, factor, w / 2, h / 2);
     this.updateZoomLabel();
-    this.draw();
+    this.scheduleDraw(true);
   }
 
   private resetViewport(): void {
     this.viewport = createInitialViewport();
     this.updateZoomLabel();
-    this.draw();
+    this.scheduleDraw(true);
   }
 
   private updateZoomLabel(): void {
@@ -414,9 +449,10 @@ export class FluxioViewer {
       );
     }
     if (this.playing && this.spec.dynamic) {
+      this.fullPaintNeeded = true;
       this.ensureLoopRunning();
     } else {
-      this.draw();
+      this.scheduleDraw(true);
     }
   }
 
@@ -427,11 +463,11 @@ export class FluxioViewer {
       this.ws.send(JSON.stringify({ type: "control", action: "reset" }));
     }
     this.updateOfflineFrames(0);
-    this.draw();
+    this.scheduleDraw();
   }
 
   private captureScreenshot(): void {
-    this.draw();
+    this.drawNow();
     const dataUrl = this.canvas.toDataURL("image/png");
 
     if (this.ws && this.wsConnected) {
@@ -482,10 +518,10 @@ export class FluxioViewer {
           if (msg.type === "snapshot") {
             this.spec = parseFigureSpec(msg.spec);
             this.prepareBackgroundImage();
-            this.draw();
+            this.scheduleDraw(true);
           } else if (msg.type === "tick") {
             applyTickMessage(this.spec, msg);
-            this.draw();
+            this.scheduleDraw(false);
           } else if (msg.type === "state") {
             this.setPlaying(msg.playing, false);
           } else if (msg.type === "capture_saved") {
@@ -507,14 +543,31 @@ export class FluxioViewer {
   private updateOfflineFrames(elapsedSec: number): void {
     if (this.wsConnected) return;
     for (const cell of this.spec.cells) {
-      if (cell.dynamic && cell.frames && cell.frames.length > 0) {
+      if (!cell.dynamic) continue;
+      if (cell.kind === "number" && cell.frames && cell.frames.length > 0) {
         const idx =
           Math.floor(elapsedSec * this.spec.fps) % cell.frames.length;
         const val = cell.frames[idx]!;
         cell.value = val;
         cell.formatted = formatNumberValue(val, cell.precision, cell.prefix);
+      } else if (cell.kind === "plot") {
+        for (const s of cell.series) {
+          if (s.frames && s.frames.length > 0) {
+            const idx =
+              Math.floor(elapsedSec * this.spec.fps) % s.frames.length;
+            const fr = s.frames[idx]!;
+            s.x = fr.x;
+            s.y = fr.y;
+          }
+        }
       }
     }
+  }
+
+  private scheduleDraw(fullPaint = false): void {
+    this.dirty = true;
+    if (fullPaint) this.fullPaintNeeded = true;
+    this.ensureLoopRunning();
   }
 
   private ensureLoopRunning(): void {
@@ -523,6 +576,7 @@ export class FluxioViewer {
 
     const step = (now: number): void => {
       this.rafId = null;
+      this.dirty = false;
       const dt = Math.min(0.05, Math.max(0.001, (now - this.lastFramePerfTime) / 1000));
       this.lastFramePerfTime = now;
 
@@ -531,6 +585,7 @@ export class FluxioViewer {
         : this.pausedElapsed;
 
       if (this.hoverAnimating) {
+        this.fullPaintNeeded = true;
         const ids = this.spec.cells.map((c) => c.id);
         this.hoverAnimating = stepHoverMap(
           this.hoverProgress,
@@ -547,9 +602,14 @@ export class FluxioViewer {
         this.updateOfflineFrames(elapsed);
       }
 
-      this.draw(elapsed);
+      const canPartial =
+        !this.fullPaintNeeded &&
+        !this.hoverAnimating &&
+        this.hoveredCellId === null;
+      this.drawNow(elapsed, canPartial);
+      this.fullPaintNeeded = false;
 
-      if (this.hoverAnimating || offlineAnimating) {
+      if (this.hoverAnimating || offlineAnimating || this.dirty) {
         this.rafId = window.requestAnimationFrame(step);
       }
     };
@@ -558,25 +618,52 @@ export class FluxioViewer {
   }
 
   public draw(elapsed = 0): void {
-    const rect = this.root.getBoundingClientRect();
-    const logicalW = Math.max(160, rect.width || this.spec.size[0]);
-    const logicalH = Math.max(120, rect.height || this.spec.size[1]);
-    const dpr = Math.min(3, window.devicePixelRatio || 1);
+    this.fullPaintNeeded = true;
+    this.drawNow(elapsed, false);
+    this.fullPaintNeeded = false;
+  }
+
+  private drawNow(elapsed = 0, partialDynamicOnly = false): void {
+    if (this.cachedWidth <= 0 || this.cachedHeight <= 0) {
+      const rect = this.root.getBoundingClientRect();
+      this.cachedWidth = rect.width;
+      this.cachedHeight = rect.height;
+    }
+    const logicalW = Math.max(160, this.cachedWidth || this.spec.size[0]);
+    const logicalH = Math.max(120, this.cachedHeight || this.spec.size[1]);
+    const rawDpr = window.devicePixelRatio || 1;
+    // Use native 1:1 DPR on large QHD/4K windows (>1.2 MP) so software-rasterized WebKit2GTK stays locked at 60 FPS
+    const dpr =
+      logicalW * logicalH > 1_200_000 ? 1 : Math.min(2, rawDpr);
 
     const targetW = Math.round(logicalW * dpr);
     const targetH = Math.round(logicalH * dpr);
+    let forceFull = !partialDynamicOnly;
     if (this.canvas.width !== targetW || this.canvas.height !== targetH) {
       this.canvas.width = targetW;
       this.canvas.height = targetH;
+      this.cellCache.clear();
+      forceFull = true;
+    }
+
+    if (!this.bgCache && typeof document !== "undefined") {
+      this.bgCache = {
+        canvas: document.createElement("canvas"),
+        key: "",
+      };
     }
 
     this.rects = renderFigureToCanvas(this.ctx, logicalW, logicalH, dpr, {
       spec: this.spec,
       viewport: this.viewport,
       hoverProgress: this.hoverProgress,
+      pointerWorld: this.pointerWorld,
       playing: this.playing,
       elapsedSeconds: elapsed,
       bgImage: this.bgImage,
+      bgCache: this.bgCache,
+      cellCache: this.cellCache,
+      partialDynamicOnly: !forceFull,
     });
   }
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+import threading
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -40,6 +41,12 @@ class FluxioLiveServer:
         self._start_time: float = 0.0
         self._paused_elapsed: float = 0.0
         self._step_index: int = 0
+        self.ever_connected = threading.Event()
+        self.last_disconnect_time: float = 0.0
+
+    @property
+    def active_client_count(self) -> int:
+        return len(self._clients)
 
     @property
     def http_url(self) -> str:
@@ -103,7 +110,9 @@ class FluxioLiveServer:
         try:
             await reader.readuntil(b"\r\n\r\n")
             spec = self.fig.to_spec(t=self.current_elapsed(), step_index=None)
-            html_body = render_standalone_html(spec, ws_url=self.ws_url, full_viewport=True)
+            html_body = render_standalone_html(
+                spec, ws_url=self.ws_url, full_viewport=True
+            )
             payload = html_body.encode("utf-8")
             headers = (
                 "HTTP/1.1 200 OK\r\n"
@@ -125,6 +134,7 @@ class FluxioLiveServer:
 
     async def _handle_ws(self, ws: ServerConnection) -> None:
         self._clients.add(ws)
+        self.ever_connected.set()
         try:
             spec = self.fig.to_spec(t=self.current_elapsed(), step_index=None)
             await ws.send(json.dumps({"type": "snapshot", "spec": spec}))
@@ -141,6 +151,8 @@ class FluxioLiveServer:
                     await self._handle_capture(ws, str(msg.get("data_url", "")))
         finally:
             self._clients.discard(ws)
+            if not self._clients:
+                self.last_disconnect_time = time.monotonic()
 
     async def _handle_control(self, action: str) -> None:
         if action == "pause" and self.playing:
@@ -185,8 +197,20 @@ class FluxioLiveServer:
 
     async def _tick_loop(self) -> None:
         interval = 1.0 / max(1, self.fig.fps)
+        next_deadline = time.monotonic() + interval
         while True:
-            await asyncio.sleep(interval)
+            now = time.monotonic()
+            sleep_dur = next_deadline - now
+            if sleep_dur > 0.0005:
+                await asyncio.sleep(sleep_dur)
+            else:
+                await asyncio.sleep(0)
+            after = time.monotonic()
+            if after - next_deadline > interval:
+                next_deadline = after + interval
+            else:
+                next_deadline += interval
+
             if not self.playing or not self._clients:
                 continue
             t = self.current_elapsed()

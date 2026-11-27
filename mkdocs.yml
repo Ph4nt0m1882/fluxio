@@ -1,4 +1,4 @@
-site_name: Fluxio Documentation
+site_name: Fluxio
 site_description: Modern, lightweight, real-time visualization engine for Python, Jupyter, Terminal, and AI Chatbots.
 docs_dir: docs
 site_dir: site
@@ -7,7 +7,7 @@ theme:
   name: material
   palette:
     - scheme: slate
-      primary: light blue
+      primary: custom
       accent: cyan
       toggle:
         icon: material/brightness-4
@@ -20,30 +20,46 @@ theme:
         name: Switch to dark mode
   features:
     - content.code.copy
-    - navigation.sections
-    - navigation.expand
+    - content.tabs.link
+    - navigation.tabs
+    - navigation.indexes
+    - navigation.footer
     - navigation.top
     - search.suggest
     - search.highlight
+    - toc.follow
+
+extra_css:
+  - stylesheets/fluxio.css
 
 markdown_extensions:
   - admonition
   - tables
   - attr_list
+  - md_in_html
   - pymdownx.highlight:
       anchor_linenums: true
   - pymdownx.superfences
   - pymdownx.inlinehilite
+  - pymdownx.tabbed:
+      alternate_style: true
 
 nav:
   - Home: index.md
   - Core Concepts:
-      - Styling & Themes: styling.md
-      - Outputs & Exports: outputs.md
-  - Charts & Widgets:
-      - Number: charts/number.md
-  - AI & LLM Integration:
-      - Guide & Prompting: ai-integration.md
-      - llms.txt: llms.txt
-      - llms-full.txt: llms-full.txt
-      - API Stub (fluxio.pyi): fluxio.pyi
+      - Step-by-Step Tutorial: tutorial.md
+      - Styling, Themes & Variants: styling.md
+  - Developer & Outputs:
+      - Architecture & OOP Hierarchy: developer.md
+      - Window, Jupyter, Terminal & Exports: outputs.md
+  - Visualizations:
+      - Gallery Overview: charts/index.md
+      - 1. Basic 1D / 2D Charts:
+          - Plot: charts/plot.md
+      - 8. Indicators & KPIs:
+          - Number: charts/number.md
+  - AI & LLM:
+      - Chatbot & Prompting Guide: ai-integration.md
+      - llms.txt (Compact): llms.txt
+      - llms-full.txt (Full): llms-full.txt
+      - fluxio.pyi (Type Stub): fluxio.pyi

@@ -12,6 +12,7 @@ dependencies = [
     "pillow>=10.4.0",
     "websockets>=13.0",
     "pywebview>=5.0",
+    "ruff>=0.17.6",
 ]
 
 [dependency-groups]

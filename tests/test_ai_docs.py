@@ -14,6 +14,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 # Utility / lifecycle methods on Figure that are NOT chart constructors
 NON_CHART_FIGURE_METHODS = {
+    "add",
     "evaluate_frame",
     "is_dynamic",
     "print",
@@ -48,7 +49,17 @@ def test_generated_pyi_stub_is_valid_python_and_covers_public_api():
         for node in tree.body
         if isinstance(node, (ast.ClassDef, ast.FunctionDef))
     }
-    for expected in ("Figure", "FigureStyle", "SubplotSlot", "Gradient", "BackgroundImage", "show", "save", "print", "llm_context"):
+    for expected in (
+        "Figure",
+        "FigureStyle",
+        "SubplotSlot",
+        "Gradient",
+        "BackgroundImage",
+        "show",
+        "save",
+        "print",
+        "llm_context",
+    ):
         assert expected in defined_names
 
     # Every public method of Figure must appear in the .pyi stub
@@ -73,10 +84,17 @@ def test_every_chart_method_has_dedicated_mkdocs_page():
         if not name.startswith("_") and name not in NON_CHART_FIGURE_METHODS
     ]
     assert "number" in chart_methods
+    assert "plot" in chart_methods
 
+    gallery_index = (REPO_ROOT / "docs" / "charts" / "index.md").read_text(encoding="utf-8")
     for chart in chart_methods:
         page = REPO_ROOT / "docs" / "charts" / f"{chart}.md"
+        thumb = REPO_ROOT / "docs" / "assets" / "charts" / f"{chart}.png"
+        notebook = REPO_ROOT / "examples" / "all_examples" / f"{chart}.ipynb"
         assert page.exists(), f"Missing MkDocs chart page: {page}"
+        assert thumb.exists(), f"Missing generated gallery thumbnail: {thumb}"
+        assert notebook.exists(), f"Missing per-chart showcase notebook: {notebook}"
+        assert f'href="{chart}/"' in gallery_index, f"Chart '{chart}' missing from Gallery Overview!"
         chart_doc = fx.llm_context(chart=chart)
         assert f"fig.{chart}" in chart_doc
 
@@ -114,5 +132,14 @@ def test_mkdocs_strict_build_passes(tmp_path):
     )
     assert res.returncode == 0, f"mkdocs --strict failed:\n{res.stderr}\n{res.stdout}"
     assert (tmp_path / "site" / "index.html").exists()
+    assert (tmp_path / "site" / "tutorial" / "index.html").exists()
+    assert (tmp_path / "site" / "developer" / "index.html").exists()
+    assert (tmp_path / "site" / "charts" / "index.html").exists()
     assert (tmp_path / "site" / "charts" / "number" / "index.html").exists()
+    assert (tmp_path / "site" / "charts" / "plot" / "index.html").exists()
+    assert (tmp_path / "site" / "assets" / "charts" / "tutorial_live.gif").exists()
+    assert (tmp_path / "site" / "assets" / "charts" / "plot_anim.gif").exists()
     assert (tmp_path / "site" / "llms.txt").exists()
+    # Verify Prev/Next footer navigation is rendered on inner pages
+    plot_html = (tmp_path / "site" / "charts" / "plot" / "index.html").read_text(encoding="utf-8")
+    assert "md-footer__link" in plot_html

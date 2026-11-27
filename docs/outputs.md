@@ -5,9 +5,10 @@ A single `fx.Figure` instance supports four output targets without rewriting you
 ## 1. Interactive Desktop Window (`fx.show`)
 
 ```python
-fx.show(fig)                        # Native pywebview window (fallback: frameless --app browser)
-fx.show(fig, backend="browser")     # Force browser window
-fx.show(fig, backend="terminal")    # Force live in-place terminal mode
+fx.show(fig)                      # Auto: native pywebview (or GPU --app window on Linux Wayland+NVIDIA)
+fx.show(fig, backend="browser")   # Force frameless GPU --app browser window
+fx.show(fig, backend="pywebview") # Force pywebview OS WebView
+fx.show(fig, backend="terminal")  # Force live in-place terminal mode
 ```
 
 Interactive toolbar controls (Material SVG icons):
@@ -31,12 +32,12 @@ No need to switch to `plotext` for console or SSH sessions:
 - **Single snapshot or manual loop (`print(fig)`)**:
   ```python
   for _ in range(50):
-      print(fig)        # Advances time/generators and overwrites previous lines in-place!
+      print(fig)  # Advances time/generators and overwrites previous lines in-place!
       time.sleep(0.1)
   ```
 - **Automatic live TUI loop (`fig.print()` / `fx.print(fig)`)**:
   ```python
-  fig.print(duration=5.0, fps=20)   # Omit duration to run until Q or Ctrl+C
+  fig.print(duration=5.0, fps=20)  # Omit duration to run until Q or Ctrl+C
   ```
   Supports live keyboard shortcuts in TTY terminals: **`Space`** (Pause/Play), **`R`** (Reset), **`Q` / `Ctrl+C`** (Quit). Also updates in-place inside Jupyter cells via `clear_output(wait=True)`.
 
@@ -52,3 +53,4 @@ All exports run headlessly in milliseconds without Chromium:
 | `.mp4` / `.webm` | Hardware-compatible H.264 / VP9 video (requires `ffmpeg`) | `duration=3.0, fps=30, scale=1.0` |
 | `.html` | 100% self-contained interactive offline web page | `duration=3.0, fps=24` |
 | `.txt` / `.ans` | Plain UTF-8 Unicode box-art (`.txt`) or ANSI TrueColor (`.ans`) | — |
+| `.term.svg` | Pixel-locked ANSI TrueColor Terminal SVG (zero font misalignment for docs & READMEs) | — |

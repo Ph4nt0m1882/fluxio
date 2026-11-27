@@ -3,6 +3,7 @@
 from __future__ import annotations
 import asyncio
 import os
+from pathlib import Path
 import shutil
 import subprocess
 import sys
@@ -13,6 +14,7 @@ from typing import TYPE_CHECKING
 from .server import FluxioLiveServer
 
 if TYPE_CHECKING:
+    from .charts.base import Visual
     from .figure import Figure
 
 
@@ -54,6 +56,83 @@ class _BackgroundServerHandle:
             self._loop.call_soon_threadsafe(self._loop.stop)
         self._thread.join(timeout=5.0)
 
+    def wait_for_browser_session(
+        self,
+        proc: subprocess.Popen[bytes] | None,
+        close_after: float | None = None,
+    ) -> None:
+        """Keep the server alive until the `--app` browser window closes its WebSocket."""
+        if close_after is not None:
+            time.sleep(close_after)
+            if proc is not None and proc.poll() is None:
+                proc.terminate()
+            return
+
+        # Note: When Chrome/Chromium is already running on the desktop, `google-chrome --app=...`
+        # delegates the new window to the existing browser process and `proc` exits in ~15ms!
+        # So we track the actual WebSocket session lifetime instead of relying solely on `proc.wait()`.
+        connected = self._server.ever_connected.wait(timeout=10.0)
+        if connected:
+            while True:
+                time.sleep(0.15)
+                if (
+                    self._server.active_client_count == 0
+                    and self._server.last_disconnect_time > 0.0
+                    and (time.monotonic() - self._server.last_disconnect_time) >= 0.75
+                ):
+                    break
+        elif proc is not None and proc.poll() is None:
+            proc.wait()
+
+
+_CHROMIUM_APP_BROWSERS = (
+    "google-chrome",
+    "google-chrome-stable",
+    "chromium",
+    "chromium-browser",
+    "brave-browser",
+    "microsoft-edge",
+    "vivaldi",
+)
+
+
+def _find_chromium_app_browser() -> str | None:
+    for candidate in _CHROMIUM_APP_BROWSERS:
+        exe = shutil.which(candidate)
+        if exe:
+            return exe
+    return None
+
+
+def _is_linux_wayland_nvidia() -> bool:
+    if not sys.platform.startswith("linux"):
+        return False
+    is_wayland = bool(
+        os.environ.get("WAYLAND_DISPLAY")
+        or os.environ.get("XDG_SESSION_TYPE", "").lower() == "wayland"
+    )
+    has_nvidia = Path("/proc/driver/nvidia/version").exists()
+    return bool(is_wayland and has_nvidia)
+
+
+def _should_prefer_app_browser_auto() -> bool:
+    """On Linux Wayland + NVIDIA, GTK3 WebKit2GTK falls back to CPU `wl_shm`.
+    Prefer a frameless GPU-accelerated Chromium `--app` window when available."""
+    return _is_linux_wayland_nvidia() and (_find_chromium_app_browser() is not None)
+
+
+def _configure_linux_webkit_env() -> None:
+    """Prevent WebKit2GTK 2.44+ DMA-BUF Wayland fence stalls on Linux NVIDIA / hybrid laptops."""
+    if not sys.platform.startswith("linux"):
+        return
+    is_wayland = bool(
+        os.environ.get("WAYLAND_DISPLAY")
+        or os.environ.get("XDG_SESSION_TYPE", "").lower() == "wayland"
+    )
+    has_nvidia = Path("/proc/driver/nvidia/version").exists()
+    if is_wayland or has_nvidia:
+        os.environ.setdefault("WEBKIT_DISABLE_DMABUF_RENDERER", "1")
+
 
 def _has_gui_display() -> bool:
     if sys.platform.startswith("linux"):
@@ -61,21 +140,22 @@ def _has_gui_display() -> bool:
     return True
 
 
-def _open_browser_fallback(url: str, width: int, height: int) -> subprocess.Popen[bytes] | None:
-    for candidate in ("google-chrome", "chromium", "chromium-browser", "microsoft-edge"):
-        exe = shutil.which(candidate)
-        if exe:
-            return subprocess.Popen(
-                [exe, f"--app={url}", f"--window-size={width},{height}"],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
+def _open_browser_fallback(
+    url: str, width: int, height: int
+) -> subprocess.Popen[bytes] | None:
+    exe = _find_chromium_app_browser()
+    if exe:
+        return subprocess.Popen(
+            [exe, f"--app={url}", f"--window-size={width},{height}"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
     webbrowser.open(url)
     return None
 
 
 def show(
-    fig: Figure,
+    fig: Figure | Visual,
     *,
     backend: str = "auto",
     block: bool = True,
@@ -90,6 +170,17 @@ def show(
     Pass `backend="terminal"` to animate in-place directly inside the terminal.
     Returns the local HTTP URL of the live server (or `"terminal://"`).
     """
+    from .charts.base import Visual
+
+    if isinstance(fig, Visual):
+        return fig.show(
+            backend=backend,
+            block=block,
+            host=host,
+            port=port,
+            close_after=close_after,
+        )
+
     if backend == "terminal":
         fig.print(duration=close_after)
         return "terminal://"
@@ -105,8 +196,12 @@ def show(
             handle.stop()
         return url
 
-    if backend in ("auto", "pywebview"):
+    use_pywebview = backend == "pywebview" or (
+        backend == "auto" and not _should_prefer_app_browser_auto()
+    )
+    if use_pywebview:
         try:
+            _configure_linux_webkit_env()
             import webview
 
             window = webview.create_window(
@@ -130,19 +225,11 @@ def show(
                 handle.stop()
                 raise
 
-    # Browser fallback
+    # Browser fallback (`--app` frameless Chrome/Edge/Chromium window or system browser)
     proc = _open_browser_fallback(url, width, height)
     if block:
         try:
-            if close_after is not None:
-                time.sleep(close_after)
-                if proc is not None:
-                    proc.terminate()
-            elif proc is not None:
-                proc.wait()
-            else:
-                while True:
-                    time.sleep(0.5)
+            handle.wait_for_browser_session(proc, close_after=close_after)
         except KeyboardInterrupt:
             pass
         finally:

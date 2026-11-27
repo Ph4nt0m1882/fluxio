@@ -23,11 +23,15 @@ Every figure or individual cell supports three visual variants via `.style(varia
 - **Hex color string**: `"#0b1120"` or `"transparent"` (or `fig.style(transparent=True)` for alpha-transparent PowerPoint exports).
 - **Linear or Radial Gradient**:
   ```python
-  fig.style(background=fx.Gradient(["#090d16", "#1e1b4b", "#0f172a"], angle=135, kind="linear"))
+  fig.style(
+      background=fx.Gradient(["#090d16", "#1e1b4b", "#0f172a"], angle=135, kind="linear")
+  )
   ```
 - **Self-contained Image** (auto-encoded to Base64 for offline `.html` & Jupyter):
   ```python
-  fig.style(background=fx.BackgroundImage("corporate_slide.png", fit="cover", opacity=1.0))
+  fig.style(
+      background=fx.BackgroundImage("corporate_slide.png", fit="cover", opacity=1.0)
+  )
   ```
 
 Fluxio automatically measures the perceived WCAG luminance of solid colors, gradients, and images to pick a harmonious light or dark translucent veil and readable text colors unless explicitly overridden.

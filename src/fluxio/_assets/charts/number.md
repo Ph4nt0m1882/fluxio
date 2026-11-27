@@ -1,10 +1,31 @@
-# `number()` — Numeric KPI & Live Value Card
+# `Number` / `fig.number()` — Numeric KPI & Live Value Card
 
-Displays a single numeric metric (static value, continuous function of time `f(t)`, or Python generator `yield`) inside a `Figure` grid cell.
+Displays a single numeric metric (static value, continuous function of time `f(t)`, or Python generator `yield`).
 
-## Signature
+Inherits from **`Indicator` -> `Visual`** (3-level hierarchy): works both **standalone** (`fx.Number(...).show()`) and **inside a multi-cell `Figure`** (`fig.number(...)`, `fig[r, c].number(...)`, or `fig[r, c] = fx.Number(...)`).
+
+---
+
+## Signatures
 
 ```python
+# 1. Standalone or assignable object
+num = fx.Number(
+    value: int | float | Callable[[float], int | float] | Iterator[int | float],
+    *,
+    label: str = "",
+    unit: str = "",
+    prefix: str = "",
+    precision: int | None = None,
+    color: str | None = None,
+    description: str = "",
+    title: str = "",
+    subtitle: str = "",
+    theme: str = "dark",
+    size: tuple[int, int] = (780, 340),
+)
+
+# 2. Directly on a Figure or SubplotSlot
 fig.number(
     value: int | float | Callable[[float], int | float] | Iterator[int | float],
     *,
@@ -18,72 +39,72 @@ fig.number(
     col: int | None = None,
     row_span: int = 1,
     col_span: int = 1,
-) -> NumberCell
+) -> Number
 ```
 
-Can also be called via Matplotlib-like grid indexing: `fig[row, col].number(...)`.
-
-## Parameters
+## Parameters & Specificities
 
 | Parameter | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
 | `value` | `int \| float \| Callable \| Iterator` | *required* | Static number, `fn(t_seconds)` callable, or Python generator yielding numbers. |
-| `label` | `str` | `""` | Header title displayed at the top-left of the card. |
+| `label` | `str` | `""` | Header title displayed at the top-left of the card (`┤ Label ├` in `text` variant). |
 | `unit` | `str` | `""` | Unit suffix displayed next to the number (e.g. `"°C"`, `"%"`, `"ms"`). |
 | `prefix` | `str` | `""` | Prefix prepended before digits (e.g. `"€"`, `"$"`). |
-| `precision` | `int \| None` | `None` | Fixed decimal places (`None` auto-formats integers vs floats). |
+| `precision` | `int \| None` | `None` | Fixed decimal places (`None` auto-formats integers cleanly and trims trailing zeros up to 3 decimals). |
 | `color` | `str \| None` | `None` | Shorthand hex color override for this cell's accent and value. |
-| `description` | `str` | `""` | Subtitle/context note displayed at the bottom of the card. |
-| `row`, `col` | `int \| None` | `None` | 0-based grid coordinates (auto-placed in next free slot if omitted). |
-| `row_span`, `col_span` | `int` | `1` | Number of grid rows/columns spanned by this cell. |
+| `description` | `str` | `""` | Context subtitle displayed at the bottom of the card (shown automatically when card height ≥ 130 px). |
+
+!!! tip "Auto-Fitting Typography & `reverse` Contrast"
+    - **Overflow protection**: If a formatted number + unit is wider than the card, Fluxio automatically scales the font size down proportionally so digits never clip.
+    - **`variant="reverse"`**: Fills the card with `accent` and automatically picks `#ffffff` or `#090d16` ink based on WCAG luminance, applying `text_opacity` (default `0.90` on digits, `~0.68` on label/unit) so text blends harmoniously into the card hue.
+
+---
 
 ## Examples
 
-### Minimal Static Number
+=== "1. Minimal"
 
-```python
-import fluxio as fx
+    ```python
+    import fluxio as fx
 
-fig = fx.Figure(title="CPU Telemetry")
-fig.number(42.5, unit="°C", precision=1, label="Core Temperature")
-fx.show(fig)
-```
+    fx.Number(42.5, unit="°C", label="Core Temp").show()
+    ```
 
-### Multi-Cell Grid with Dynamic Function, Generator & Variants
+    === "2. Animated `.gif` (Generator & `f(t)`)"
 
-```python
-import itertools
-import math
-import fluxio as fx
+    ```python
+    import itertools
+    import math
+    import fluxio as fx
 
-fig = fx.Figure(rows=2, cols=2, title="Live System Metrics", fps=24)
-fig.style(
-    background=fx.Gradient(["#090d16", "#1e1b4b"], angle=135),
-    accent_side="left",
-    radius=20,
-)
+    fig = fx.Figure(rows=1, cols=2, title="Live KPI Stream", size=(820, 340), fps=16)
+    fig.style(background=fx.Gradient(["#090d16", "#1e1b4b"], angle=135), radius=20)
 
-# Top row spanning 2 columns: function of elapsed time `t` (seconds)
-fig.number(
-    lambda t: 65.0 + 18.0 * math.sin(t * 2.0),
-    unit="%",
-    precision=1,
-    label="Cluster Load",
-    row=0,
-    col=0,
-    col_span=2,
-)
+    # Left: continuous function of time t
+    fig[0, 0].style(accent="#f97316", accent_side="left").number(
+        lambda t: 850.0 + 110.0 * math.sin(2.0 * math.pi * t / 2.0),
+        unit="°C",
+        precision=1,
+        label="Magma Temp",
+    )
 
-# Bottom-left: classic translucent card
-fig[1, 0].style(accent="#34d399").number(43.2, unit="°C", precision=1, label="SoC Temp")
+    # Right: Python generator (`yield`) in `reverse` style
+    fig[0, 1].style(variant="reverse", accent="#2563eb", accent_side="right").number(
+        (i * 15 for i in itertools.count(1)),
+        unit="pkt",
+        precision=0,
+        label="Network Packets",
+    )
 
-# Bottom-right: solid reverse card driven by a Python generator
-fig[1, 1].style(variant="reverse", accent="#ea580c", accent_side="right").number(
-    (i * 12 for i in itertools.count(1)),
-    unit="pkt",
-    precision=0,
-    label="Packet Stream",
-)
+    fig.save("number_anim.gif", duration=2.0, fps=16)
+    ```
 
-fx.show(fig)
-```
+    === "3. Terminal Output (`print`)"
+
+    ```python
+    import fluxio as fx
+
+    n = fx.Number(99.95, unit="%", precision=2, label="Availability", description="SLA > 99.9%")
+    n.style(accent="#34d399", accent_side="left")
+    print(n)      # Or `n.print()` for live in-place updates!
+    ```

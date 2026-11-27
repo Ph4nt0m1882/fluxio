@@ -16,8 +16,19 @@ import {
   hitTestCell,
 } from "../src/layout";
 import { parseFigureSpec, applyTickMessage, formatNumberValue } from "../src/protocol";
-import { buildTaperedAccentSvgPath, TOOLBAR_ICONS } from "../src/renderer";
+import {
+  buildTaperedAccentSvgPath,
+  computeFigureUiScale,
+  TOOLBAR_ICONS,
+} from "../src/renderer";
+import { computeCardUiScale } from "../src/charts/base";
 import { renderBlockDigits } from "../src/text_digits";
+import {
+  computeAxis2DBounds,
+  computeAxisTicks,
+  computeNiceTicks,
+  findNearestPlotPoint,
+} from "../src/charts/axis2d";
 
 describe("Fluxio TypeScript Viewer Core, Variants & Customization", () => {
   it("resolves built-in themes and adaptive translucent card veil", () => {
@@ -160,7 +171,103 @@ describe("Fluxio TypeScript Viewer Core, Variants & Customization", () => {
       t: 0.5,
       updates: [{ id: "c_0_0", value: 77.25, formatted: "77.2" }],
     });
-    expect(spec.cells[0]?.value).toBe(77.25);
+    expect(spec.cells[0]?.kind === "number" && spec.cells[0].value).toBe(77.25);
     expect(formatNumberValue(12.3456, 2, "$")).toBe("$12.35");
+  });
+
+  it("computes nice Axis2D ticks, parses Plot specs, and snaps hover tooltips", () => {
+    const ticks = computeNiceTicks(2, 98, 5);
+    expect(ticks.length).toBeGreaterThanOrEqual(3);
+    expect(ticks[0]!).toBeLessThanOrEqual(2);
+    expect(ticks[ticks.length - 1]!).toBeGreaterThanOrEqual(98);
+
+    const plotSpec = parseFigureSpec({
+      version: "0.1",
+      id: "fig_plot",
+      title: "Plot Test",
+      rows: 1,
+      cols: 1,
+      size: [800, 450],
+      fps: 24,
+      dynamic: true,
+      theme: { name: "dark" },
+      cells: [
+        {
+          id: "p_0_0",
+          row: 0,
+          col: 0,
+          row_span: 1,
+          col_span: 1,
+          kind: "plot",
+          label: "Courbe",
+          xlabel: "Temps",
+          ylabel: "Valeur",
+          grid: true,
+          legend: true,
+          dynamic: true,
+          series: [
+            {
+              label: "S1",
+              x: [0, 1, 2],
+              y: [10, 20, 15],
+              color: "#38bdf8",
+              linewidth: 2.4,
+              linestyle: "solid",
+              marker: "circle",
+              fill_alpha: 0.12,
+            },
+          ],
+        },
+      ],
+    });
+
+    const pCell = plotSpec.cells[0]!;
+    expect(pCell.kind).toBe("plot");
+
+    applyTickMessage(plotSpec, {
+      type: "tick",
+      t: 1.0,
+      updates: [
+        {
+          id: "p_0_0",
+          series_data: [{ x: [1, 2, 3], y: [20, 15, 35] }],
+        },
+      ],
+    });
+    if (pCell.kind === "plot") {
+      expect(pCell.series[0]?.y).toEqual([20, 15, 35]);
+      const nearest = findNearestPlotPoint(
+        pCell,
+        { x: 50, y: 50, width: 400, height: 200 },
+        { xMin: 1, xMax: 3, yMin: 10, yMax: 40 },
+        250, // midpoint X -> x = 2 -> y = 15
+        160,
+      );
+      expect(nearest).not.toBeNull();
+      expect(nearest!.dataX).toBe(2);
+      expect(nearest!.dataY).toBe(15);
+    }
+
+    // Explicit xmin/xmax + xstep=2 & partial ymin=0
+    const steppedBounds = computeAxis2DBounds(
+      [{ x: [0, 5, 10], y: [15, 65, 40] }],
+      null,
+      null,
+      0,
+      10,
+      0,
+      null,
+    );
+    expect(steppedBounds.xMin).toBe(0);
+    expect(steppedBounds.xMax).toBe(10);
+    expect(steppedBounds.yMin).toBe(0);
+    expect(steppedBounds.yMax).toBeGreaterThan(65);
+    expect(computeAxisTicks(0, 10, 5, 2, 0)).toEqual([0, 2, 4, 6, 8, 10]);
+
+    // Responsive typography scale stays 1.0 on normal windows and scales smoothly on QHD/4K
+    expect(computeFigureUiScale(900, 520)).toBe(1.0);
+    expect(computeFigureUiScale(2560, 1440)).toBeGreaterThan(1.7);
+    expect(computeCardUiScale(420, 260)).toBe(1.0);
+    expect(computeCardUiScale(1800, 900)).toBeGreaterThan(1.7);
   });
 });

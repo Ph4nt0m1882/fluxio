@@ -2,6 +2,17 @@
 
 from __future__ import annotations
 from pathlib import Path
+from .charts import (
+    Axis2D,
+    Field2D,
+    Indicator,
+    Number,
+    Plot,
+    Polar2D,
+    Scene,
+    Space3D,
+    Visual,
+)
 from .figure import Figure, FigureStyle, SubplotSlot
 from .protocol import NumberCell, ToolbarConfig
 from .text_render import render_spec_to_terminal
@@ -22,13 +33,22 @@ __all__ = [
     "BUILTIN_THEMES",
     "VALID_ACCENT_SIDES",
     "VALID_VARIANTS",
+    "Axis2D",
     "BackgroundImage",
+    "Field2D",
     "Figure",
     "FigureStyle",
     "Gradient",
+    "Indicator",
+    "Number",
     "NumberCell",
+    "Plot",
+    "Polar2D",
+    "Scene",
+    "Space3D",
     "SubplotSlot",
     "ToolbarConfig",
+    "Visual",
     "llm_context",
     "print",
     "render_spec_to_terminal",
@@ -40,7 +60,7 @@ __all__ = [
 
 
 def print(
-    fig: Figure,
+    fig: Figure | Visual,
     *,
     duration: float | None = None,
     fps: int | None = None,
@@ -70,7 +90,7 @@ def llm_context(
 
 
 def save(
-    fig: Figure,
+    fig: Figure | Visual,
     path: str | Path,
     *,
     duration: float = 3.0,

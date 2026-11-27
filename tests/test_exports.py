@@ -44,7 +44,9 @@ def test_export_svg(tmp_path):
 
 def test_export_animated_gif(tmp_path):
     fig = fx.Figure(title="Compteur Dynamique", theme="dark", size=(480, 300))
-    fig.number(lambda t: round(10 + t * 20, 1), unit="m/s", label="Vitesse", precision=1)
+    fig.number(
+        lambda t: round(10 + t * 20, 1), unit="m/s", label="Vitesse", precision=1
+    )
 
     gif_path = tmp_path / "anim.gif"
     fig.save(gif_path, duration=1.0, fps=10, scale=1.0)

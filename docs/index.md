@@ -1,36 +1,82 @@
-# Fluxio
+---
+hide:
+  - navigation
+  - toc
+---
 
-**Fluxio** (`import fluxio as fx`) is a modern, lightweight, real-time visualization engine built on **Python + zero-dependency TypeScript `<canvas>`** (~28 KB bundle).
+<div class="fx-hero">
+  <img src="assets/banner.webp" alt="Fluxio — Modern Visualization Engine" />
+  <p class="fx-hero-subtitle">
+    <strong>Fluxio</strong> (<code>import fluxio as fx</code>) is a lightweight, real-time visualization engine in <strong>Python + zero-dependency TypeScript <code>&lt;canvas&gt;</code></strong> (~38 KB) built for desktop windows, Jupyter, ANSI terminals, slides, and AI chatbots.
+  </p>
+</div>
 
-It allows a **single `Figure` object** to render seamlessly across desktop windows, Jupyter notebooks, ANSI TrueColor terminals, static/animated presentation exports, and embedded AI chatbot WebViews.
+<div class="fx-grid">
+  <a class="fx-card fx-cyan" href="tutorial/">
+    <div>
+      <div class="fx-card-kicker">01 • Tutorial &amp; Aesthetics</div>
+      <h3 class="fx-card-title">Core Concepts &amp; Tutorial</h3>
+      <p class="fx-card-desc">
+        Progressive walkthrough from a 2-line minimal chart to multi-cell grids, cascading <code>.style()</code>, live <code>.gif</code> animations, and terminal <code>print(fig)</code> outputs.
+      </p>
+    </div>
+    <span class="fx-card-cta">Start the Tutorial →</span>
+  </a>
 
-## Quickstart
+  <a class="fx-card fx-emerald fx-right" href="developer/">
+    <div>
+      <div class="fx-card-kicker">02 • Engine &amp; Targets</div>
+      <h3 class="fx-card-title">Developer &amp; Outputs</h3>
+      <p class="fx-card-desc">
+        3-level OOP class hierarchy (<code>Visual → Family → Chart</code>), native windows, persistent Jupyter cells, live in-place terminal <code>print(fig)</code>, and Chromium-free <code>PNG/SVG/GIF/MP4/HTML</code> exports.
+      </p>
+    </div>
+    <span class="fx-card-cta">Read Engine &amp; Outputs →</span>
+  </a>
+
+  <a class="fx-card fx-orange" href="charts/">
+    <div>
+      <div class="fx-card-kicker">03 • Visual Catalog</div>
+      <h3 class="fx-card-title">Visualizations Gallery</h3>
+      <p class="fx-card-desc">
+        Browse every available chart and KPI indicator with live Python-generated previews and dedicated one-page API references (<code>Number</code>, <code>Plot</code>, and more).
+      </p>
+    </div>
+    <span class="fx-card-cta">Open Visual Gallery →</span>
+  </a>
+
+  <a class="fx-card fx-purple fx-right" href="ai-integration/">
+    <div>
+      <div class="fx-card-kicker">04 • LLM-First Design</div>
+      <h3 class="fx-card-title">AI &amp; Chatbot Integration</h3>
+      <p class="fx-card-desc">
+        Zero-hallucination code generation for local and frontier LLMs via runtime <code>fx.llm_context()</code>, <code>llms.txt</code>, <code>llms-full.txt</code>, and condensed <code>fluxio.pyi</code> stubs.
+      </p>
+    </div>
+    <span class="fx-card-cta">Configure AI Context →</span>
+  </a>
+</div>
+
+---
+
+## Quickstart in 10 Lines
 
 ```python
+import math
 import fluxio as fx
 
-fig = fx.Figure(rows=1, cols=2, title="System Overview", size=(900, 420))
-fig.style(accent="#38bdf8", accent_side="left", radius=20)
+fig = fx.Figure(rows=1, cols=2, title="Live Telemetry Overview", size=(960, 420), fps=24)
+fig.style(background=fx.Gradient(["#090d16", "#1e1b4b"], angle=135), radius=20)
 
-fig[0, 0].number(42.5, unit="°C", precision=1, label="SoC Temp")
-fig[0, 1].style(variant="reverse", accent="#059669", accent_side="right").number(
-    99.95, unit="%", precision=2, label="Availability"
+fig[0, 0].style(variant="reverse", accent="#059669", accent_side="left").number(
+    42.5, unit="°C", precision=1, label="SoC Temperature"
+)
+xs = [i * 0.2 for i in range(35)]
+fig[0, 1].style(accent="#38bdf8", accent_side="right").plot(
+    xs, [math.sin(x) * 30 + 50 for x in xs], label="Signal", xlabel="t (s)"
 )
 
-# 1. Interactive desktop window (zoom/pan, play/pause, PNG capture)
-fx.show(fig)
-
-# 2. Terminal ANSI TrueColor output (replaces plotext!)
-print(fig)
-
-# 3. Headless exports (no Chromium required)
-fig.save("slide.png")
-fig.save("standalone.html")
+print(fig)                # ANSI TrueColor + Unicode Braille in terminal!
+fx.show(fig)              # Interactive desktop window (zoom/pan, pause, PNG capture)
+fig.save("overview.png")  # High-DPI export in milliseconds
 ```
-
-## Documentation Sections
-
-- **[Styling & Themes](styling.md)**: Cascading `fig.style(...)` and `fig[row, col].style(...)`, `Gradient`, `BackgroundImage`, adaptive translucent veils, tapered crescent borders, and `classic` / `reverse` / `text` variants.
-- **[Outputs & Exports](outputs.md)**: Desktop windows, persistent Jupyter cells, static & live terminal rendering (`print(fig)`, `fig.print()`), and multi-format exports (`PNG`, `SVG`, `GIF`, `MP4`, `HTML`, `TXT`).
-- **[Charts — `number()`](charts/number.md)**: Static, time-function `f(t)`, and Python generator (`yield`) numeric KPI widgets.
-- **[AI & LLM Integration](ai-integration.md)**: Token-efficient `llms.txt`, `llms-full.txt`, condensed `fluxio.pyi` type stubs, and runtime `fx.llm_context()`.

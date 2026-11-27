@@ -8,9 +8,11 @@ Exemples d'utilisation :
 """
 
 from __future__ import annotations
+
 import argparse
 import itertools
 import math
+
 import fluxio as fx
 
 
@@ -27,7 +29,7 @@ def build_demo_figure(global_variant: str = "classic") -> fx.Figure:
         title="Fluxio — Monitoring Hybride (Terminal + Fenêtre)",
         subtitle="Même objet `fig` : `print(fig)` dans le terminal ET `fx.show(fig)` interactif",
         size=(940, 560),
-        fps=25,
+        fps=60,
     )
 
     fig.style(
@@ -75,7 +77,9 @@ def build_demo_figure(global_variant: str = "classic") -> fx.Figure:
         accent_width=7.5,
     ).number(
         packet_stream(),
-        label="Flux Générateur (Reverse)" if cell_variant == "reverse" else "Flux Générateur",
+        label="Flux Générateur (Reverse)"
+        if cell_variant == "reverse"
+        else "Flux Générateur",
         unit="pkt",
         precision=0,
         description="Alimenté par un générateur Python (yield)",

@@ -1,8 +1,4 @@
-"""Lightweight headless 2D renderer for SVG, PNG, animated GIF, and MP4 exports.
-
-Supports classic, reverse, and btop-style TUI text variants, solid/gradient/image
-backgrounds, adaptive translucent veils, and tapered crescent borders.
-"""
+"""Shared headless 2D & SVG figure renderer delegating cell content to modular `charts/` renderers."""
 
 from __future__ import annotations
 import base64
@@ -15,8 +11,9 @@ from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from PIL import Image, ImageColor, ImageDraw, ImageFont
+from .charts.base import get_pillow_renderer, get_svg_renderer
 from .text_render import build_block_matrix, split_block_renderable
-from .theme import MONOSPACE_STACK, hex_to_rgb, resolve_cell_style
+from .theme import hex_to_rgb, resolve_cell_style
 
 if TYPE_CHECKING:
     from .figure import Figure
@@ -121,8 +118,12 @@ def _render_gradient_rgba(
         cos_r = math.cos(rad)
         sin_r = math.sin(rad)
         half_len = max(1e-6, (abs(w * cos_r) + abs(h * sin_r)) / 2.0)
-        tx = [(((ix + 0.5) / gw - 0.5) * w * cos_r) / (2.0 * half_len) for ix in range(gw)]
-        ty = [(((iy + 0.5) / gh - 0.5) * h * sin_r) / (2.0 * half_len) for iy in range(gh)]
+        tx = [
+            (((ix + 0.5) / gw - 0.5) * w * cos_r) / (2.0 * half_len) for ix in range(gw)
+        ]
+        ty = [
+            (((iy + 0.5) / gh - 0.5) * h * sin_r) / (2.0 * half_len) for iy in range(gh)
+        ]
         pos = 0
         for vy in ty:
             base = 0.5 + vy
@@ -167,9 +168,7 @@ def _render_background_rgba(theme: dict[str, Any], w: int, h: int) -> Image.Imag
                     layer = im.resize((w, h), resample=Image.Resampling.LANCZOS)
                 else:
                     scale = (
-                        min(w / iw, h / ih)
-                        if fit == "contain"
-                        else max(w / iw, h / ih)
+                        min(w / iw, h / ih) if fit == "contain" else max(w / iw, h / ih)
                     )
                     dw = max(1, int(round(iw * scale)))
                     dh = max(1, int(round(ih * scale)))
@@ -247,12 +246,23 @@ def _svg_tapered_accent_path(
     return f"{outer} {inner}"
 
 
-def _compute_header_height(spec: dict[str, Any]) -> int:
+def _compute_fig_ui_scale(width: float, height: float) -> float:
+    r = min(width / 960.0, height / 560.0)
+    return min(2.2, 1.0 + (r - 1.0) * 0.55) if r > 1.05 else 1.0
+
+
+def _compute_header_height(
+    spec: dict[str, Any],
+    width: float = 900.0,
+    height: float = 520.0,
+) -> int:
     title = spec.get("title", "")
     subtitle = spec.get("subtitle", "")
     if not title and not subtitle:
         return 0
-    s = float(spec["theme"].get("font_scale", 1.0))
+    s = float(spec["theme"].get("font_scale", 1.0)) * _compute_fig_ui_scale(
+        width, height
+    )
     return int(round((56 if (title and subtitle) else 38) * s))
 
 
@@ -266,7 +276,7 @@ def _compute_grid_rects(
     gap = float(theme["gap"])
     rows = max(1, int(spec["rows"]))
     cols = max(1, int(spec["cols"]))
-    header_h = float(_compute_header_height(spec))
+    header_h = float(_compute_header_height(spec, width, height))
 
     inner_x = padding
     inner_y = padding + header_h
@@ -335,7 +345,10 @@ def _paste_ring_and_crescent(
 
 
 def render_spec_to_image(spec: dict[str, Any], scale: float = 1.0) -> Image.Image:
-    """Render a FigureSpec dictionary to a Pillow RGBA Image supporting classic, reverse, and text variants."""
+    """Render a FigureSpec dictionary to a Pillow RGBA Image via registered chart renderers."""
+    # Ensure concrete chart modules are imported so their renderers are registered
+    from . import charts as _charts  # noqa: F401
+
     base_w, base_h = spec["size"]
     theme = spec["theme"]
     is_text_theme = theme.get("variant") == "text"
@@ -350,7 +363,8 @@ def render_spec_to_image(spec: dict[str, Any], scale: float = 1.0) -> Image.Imag
     draw = ImageDraw.Draw(overlay)
 
     pad = float(theme["padding"]) * s
-    fscale_global = float(theme.get("font_scale", 1.0))
+    fig_ui = _compute_fig_ui_scale(base_w, base_h)
+    fscale_global = float(theme.get("font_scale", 1.0)) * fig_ui
     title = spec.get("title", "")
     subtitle = spec.get("subtitle", "")
     title_px = int(round(18 * fscale_global * s))
@@ -363,10 +377,18 @@ def render_spec_to_image(spec: dict[str, Any], scale: float = 1.0) -> Image.Imag
         draw.text((pad, pad), f"{prefix_t}{title}", fill=_rgba(t_col), font=f_title)
     if subtitle:
         f_sub = _load_font(sub_px, bold=False, mono=is_text_theme)
-        offset_y = pad + ((title_px + 6 * s) if title else 0)
-        draw.text((pad, offset_y), subtitle, fill=_rgba(theme["subtitle_color"]), font=f_sub)
+        offset_y = pad + ((title_px + 6 * fig_ui * s) if title else 0)
+        draw.text(
+            (pad, offset_y), subtitle, fill=_rgba(theme["subtitle_color"]), font=f_sub
+        )
 
     rects = _compute_grid_rects(spec, base_w, base_h)
+    helpers = {
+        "load_font": _load_font,
+        "rgba": _rgba,
+        "split_block_renderable": split_block_renderable,
+        "build_block_matrix": build_block_matrix,
+    }
 
     for cell in spec["cells"]:
         cs = cell.get("resolved_style") or resolve_cell_style(
@@ -380,7 +402,9 @@ def render_spec_to_image(spec: dict[str, Any], scale: float = 1.0) -> Image.Imag
         ix0 = int(round(x0))
         iy0 = int(round(y0))
 
-        raw_rad = min(10.0, float(cs["radius"])) if variant == "text" else float(cs["radius"])
+        raw_rad = (
+            min(10.0, float(cs["radius"])) if variant == "text" else float(cs["radius"])
+        )
         radius = min(raw_rad * s, cw / 2.0, ch / 2.0)
 
         card_layer = Image.new("RGBA", (cw_i, ch_i), (0, 0, 0, 0))
@@ -388,7 +412,9 @@ def render_spec_to_image(spec: dict[str, Any], scale: float = 1.0) -> Image.Imag
 
         if variant == "reverse":
             fill_col = _rgba(cs["accent"], float(cs["surface_opacity"]))
-            cdraw.rounded_rectangle([0, 0, cw_i - 1, ch_i - 1], radius=radius, fill=fill_col)
+            cdraw.rounded_rectangle(
+                [0, 0, cw_i - 1, ch_i - 1], radius=radius, fill=fill_col
+            )
             bw = float(cs["border_width"]) * s
             rev_ink = cs["reverse_ink"]
             card_layer = _paste_ring_and_crescent(
@@ -445,17 +471,24 @@ def render_spec_to_image(spec: dict[str, Any], scale: float = 1.0) -> Image.Imag
                 _rgba(cs["accent"], 1.0),
             )
 
-        # Draw cell text/digits onto a separate RGBA text layer so reverse/translucent text alpha-blends cleanly!
-        txt_layer = Image.new("RGBA", (cw_i, ch_i), (0, 0, 0, 0))
-        tdraw = ImageDraw.Draw(txt_layer)
-        fscale = float(cs["font_scale"])
+        renderer_fn = get_pillow_renderer(str(cell.get("kind", "number")))
+        if renderer_fn is not None:
+            txt_layer = Image.new("RGBA", (cw_i, ch_i), (0, 0, 0, 0))
+            tdraw = ImageDraw.Draw(txt_layer)
+            renderer_fn(
+                tdraw,
+                cell,
+                cs,
+                cw_i,
+                ch_i,
+                rw,
+                rh,
+                float(cs["font_scale"]),
+                s,
+                helpers,
+            )
+            card_layer = Image.alpha_composite(card_layer, txt_layer)
 
-        if variant == "text":
-            _draw_text_tui_cell_pillow(tdraw, cell, cs, cw_i, ch_i, rw, rh, fscale, s)
-        else:
-            _draw_modern_cell_text_pillow(tdraw, cell, cs, cw_i, ch_i, rw, rh, fscale, s)
-
-        card_layer = Image.alpha_composite(card_layer, txt_layer)
         overlay.alpha_composite(card_layer, dest=(ix0, iy0))
 
     img = Image.alpha_composite(img, overlay)
@@ -464,198 +497,10 @@ def render_spec_to_image(spec: dict[str, Any], scale: float = 1.0) -> Image.Imag
     return img.resize((target_w, target_h), resample=Image.Resampling.LANCZOS)
 
 
-def _draw_modern_cell_text_pillow(
-    tdraw: ImageDraw.ImageDraw,
-    cell: dict[str, Any],
-    cs: dict[str, Any],
-    cw_i: int,
-    ch_i: int,
-    rw: float,
-    rh: float,
-    fscale: float,
-    s: float,
-) -> None:
-    is_rev = cs["variant"] == "reverse"
-    rev_ink = cs["reverse_ink"]
-    txt_op = float(cs["text_opacity"])
-    mut_op = float(cs["muted_opacity"])
-
-    lbl_rgba = _rgba(rev_ink if is_rev else cs["muted"], mut_op)
-    val_rgba = _rgba(rev_ink if is_rev else cs["text"], txt_op)
-    unit_rgba = _rgba(rev_ink if is_rev else cs["unit_color"], mut_op if is_rev else txt_op)
-
-    pad_x = min(28.0, max(16.0, rw * 0.07)) * s
-    pad_y = min(22.0, max(12.0, rh * 0.085)) * s
-
-    label = cell.get("label", "")
-    if label:
-        lbl_px = int(round(min(16.0, max(11.0, rh * 0.085)) * fscale * s))
-        f_lbl = _load_font(lbl_px, bold=True)
-        tdraw.text((pad_x, pad_y + 2 * s), label, fill=lbl_rgba, font=f_lbl)
-
-    if cell.get("dynamic"):
-        dot_r = 4.5 * s
-        dx = cw_i - pad_x - dot_r
-        dy = pad_y + 8 * s
-        dot_col = _rgba(rev_ink, 0.85) if is_rev else _rgba("#22c55e")
-        tdraw.ellipse([dx - dot_r, dy - dot_r, dx + dot_r, dy + dot_r], fill=dot_col)
-
-    val_px = int(round(max(18.0, min(rh * 0.42, rw * 0.28, 96.0) * fscale) * s))
-    unit_text = f" {cell['unit']}" if cell.get("unit") else ""
-    formatted = str(cell.get("formatted", cell.get("value", "")))
-
-    f_val = _load_font(val_px, bold=True)
-    unit_px = max(int(round(13 * s)), int(round(val_px * 0.42)))
-    f_unit = _load_font(unit_px, bold=True)
-
-    val_w = tdraw.textlength(formatted, font=f_val)
-    unit_w = tdraw.textlength(unit_text, font=f_unit) if unit_text else 0.0
-    max_avail_w = max(24.0 * s, cw_i - pad_x * 2)
-
-    if val_w + unit_w > max_avail_w and (val_w + unit_w) > 0:
-        shrink = max_avail_w / (val_w + unit_w)
-        val_px = max(int(round(14 * s)), int(val_px * shrink))
-        unit_px = max(int(round(11 * s)), int(round(val_px * 0.42)))
-        f_val = _load_font(val_px, bold=True)
-        f_unit = _load_font(unit_px, bold=True)
-        val_w = tdraw.textlength(formatted, font=f_val)
-        unit_w = tdraw.textlength(unit_text, font=f_unit) if unit_text else 0.0
-
-    group_w = val_w + unit_w
-    start_x = (cw_i - group_w) / 2.0
-    center_y = ch_i * (0.56 if label else 0.5)
-
-    tdraw.text((start_x, center_y), formatted, fill=val_rgba, font=f_val, anchor="lm")
-    if unit_text:
-        tdraw.text(
-            (start_x + val_w, center_y + val_px * 0.08),
-            unit_text,
-            fill=unit_rgba,
-            font=f_unit,
-            anchor="lm",
-        )
-
-    desc = cell.get("description", "")
-    if desc and rh >= 130:
-        f_desc = _load_font(int(round(12 * fscale * s)), bold=False)
-        tdraw.text((cw_i / 2.0, ch_i - pad_y), desc, fill=lbl_rgba, font=f_desc, anchor="mb")
-
-
-def _draw_text_tui_cell_pillow(
-    tdraw: ImageDraw.ImageDraw,
-    cell: dict[str, Any],
-    cs: dict[str, Any],
-    cw_i: int,
-    ch_i: int,
-    rw: float,
-    rh: float,
-    fscale: float,
-    s: float,
-) -> None:
-    pad_x = 18.0 * s
-    pad_y = 14.0 * s
-    accent_rgba = _rgba(cs["accent"], 1.0)
-    txt_rgba = _rgba(cs["text"], float(cs["text_opacity"]))
-    mut_rgba = _rgba(cs["muted"], 1.0)
-
-    label = cell.get("label", "")
-    if label:
-        f_lbl = _load_font(int(round(13 * fscale * s)), bold=True, mono=True)
-        w1 = tdraw.textlength("┤ ", font=f_lbl)
-        w2 = tdraw.textlength(label, font=f_lbl)
-        tdraw.text((pad_x, pad_y), "┤ ", fill=accent_rgba, font=f_lbl)
-        tdraw.text((pad_x + w1, pad_y), label, fill=_rgba(cs["text"], 1.0), font=f_lbl)
-        tdraw.text((pad_x + w1 + w2, pad_y), " ├", fill=accent_rgba, font=f_lbl)
-
-    if cell.get("dynamic"):
-        f_live = _load_font(int(round(11 * s)), bold=True, mono=True)
-        tdraw.text(
-            (cw_i - pad_x, pad_y + 1 * s),
-            "● LIVE",
-            fill=_rgba("#22c55e"),
-            font=f_live,
-            anchor="ra",
-        )
-
-    formatted = str(cell.get("formatted", cell.get("value", "")))
-    prefix, core = split_block_renderable(formatted)
-    matrix = build_block_matrix(core)
-    max_avail_w = max(40.0 * s, cw_i - pad_x * 2)
-    center_y = ch_i * (0.56 if label else 0.5)
-
-    drew_blocks = False
-    if matrix and len(matrix[0]) > 0 and rh >= 115:
-        cols = len(matrix[0])
-        unit_str = f" {cell['unit']}" if cell.get("unit") else ""
-        unit_px = int(round(min(22.0, max(13.0, rh * 0.11)) * fscale * s))
-        f_unit = _load_font(unit_px, bold=True, mono=True)
-        prefix_w = tdraw.textlength(f"{prefix} ", font=f_unit) if prefix else 0.0
-        unit_w = (tdraw.textlength(unit_str, font=f_unit) + 6 * s) if unit_str else 0.0
-
-        max_block_w = max(24.0 * s, max_avail_w - prefix_w - unit_w)
-        cell_px = math.floor(
-            min(
-                (rh * 0.42 * fscale * s) / 6.0,
-                max_block_w / cols,
-                14.0 * s,
-            )
-        )
-        if cell_px >= int(4 * s):
-            drew_blocks = True
-            grid_w = cols * cell_px
-            grid_h = 6 * cell_px
-            total_w = prefix_w + grid_w + unit_w
-            start_x = (cw_i - total_w) / 2.0
-            top_y = center_y - grid_h / 2.0
-            gap = max(1, int(round(1.0 * s))) if cell_px >= int(7 * s) else 0
-
-            if prefix:
-                tdraw.text(
-                    (start_x, center_y),
-                    f"{prefix} ",
-                    fill=accent_rgba,
-                    font=f_unit,
-                    anchor="lm",
-                )
-            gx0 = start_x + prefix_w
-            for r in range(6):
-                row_str = matrix[r]
-                for c in range(cols):
-                    if row_str[c] == "1":
-                        bx = int(round(gx0 + c * cell_px))
-                        by = int(round(top_y + r * cell_px))
-                        bw_b = max(1, cell_px - gap)
-                        tdraw.rectangle([bx, by, bx + bw_b - 1, by + bw_b - 1], fill=txt_rgba)
-
-            if unit_str:
-                tdraw.text(
-                    (gx0 + grid_w + 6 * s, top_y + grid_h),
-                    unit_str,
-                    fill=accent_rgba,
-                    font=f_unit,
-                    anchor="lb",
-                )
-
-    if not drew_blocks:
-        val_px = int(round(max(16.0, min(rh * 0.32, 48.0) * fscale) * s))
-        f_val = _load_font(val_px, bold=True, mono=True)
-        full = f"{formatted} {cell['unit']}" if cell.get("unit") else formatted
-        tdraw.text((cw_i / 2.0, center_y), full, fill=txt_rgba, font=f_val, anchor="mm")
-
-    desc = cell.get("description", "")
-    if desc and rh >= 135:
-        f_desc = _load_font(int(round(11.5 * fscale * s)), bold=False, mono=True)
-        tdraw.text(
-            (cw_i / 2.0, ch_i - pad_y + 2 * s),
-            f"// {desc}",
-            fill=mut_rgba,
-            font=f_desc,
-            anchor="mb",
-        )
-
-
 def render_spec_to_svg(spec: dict[str, Any]) -> str:
-    """Render a FigureSpec dictionary to crisp vector SVG supporting classic, reverse, and text variants."""
+    """Render a FigureSpec dictionary to crisp vector SVG via registered chart renderers."""
+    from . import charts as _charts  # noqa: F401
+
     width, height = spec["size"]
     theme = spec["theme"]
     is_text_theme = theme.get("variant") == "text"
@@ -671,10 +516,14 @@ def render_spec_to_svg(spec: dict[str, Any]) -> str:
         if btype == "gradient":
             stops = list(bg.get("stops") or [theme["background"]])
             if bg.get("kind") == "radial":
-                parts.append('  <defs><radialGradient id="fx_bg_grad" cx="50%" cy="50%" r="65%">')
+                parts.append(
+                    '  <defs><radialGradient id="fx_bg_grad" cx="50%" cy="50%" r="65%">'
+                )
                 for idx, col in enumerate(stops):
                     pct = 0 if len(stops) == 1 else (idx / (len(stops) - 1)) * 100
-                    parts.append(f'    <stop offset="{pct:.1f}%" stop-color="{html.escape(col)}" />')
+                    parts.append(
+                        f'    <stop offset="{pct:.1f}%" stop-color="{html.escape(col)}" />'
+                    )
                 parts.append("  </radialGradient></defs>")
             else:
                 rad = ((float(bg.get("angle", 135.0)) - 90.0) * math.pi) / 180.0
@@ -688,15 +537,23 @@ def render_spec_to_svg(spec: dict[str, Any]) -> str:
                 )
                 for idx, col in enumerate(stops):
                     pct = 0 if len(stops) == 1 else (idx / (len(stops) - 1)) * 100
-                    parts.append(f'    <stop offset="{pct:.1f}%" stop-color="{html.escape(col)}" />')
+                    parts.append(
+                        f'    <stop offset="{pct:.1f}%" stop-color="{html.escape(col)}" />'
+                    )
                 parts.append("  </linearGradient></defs>")
-            parts.append(f'  <rect width="{width}" height="{height}" fill="url(#fx_bg_grad)" />')
+            parts.append(
+                f'  <rect width="{width}" height="{height}" fill="url(#fx_bg_grad)" />'
+            )
         elif btype == "image":
             parts.append(
                 f'  <rect width="{width}" height="{height}" fill="{html.escape(theme["background"])}" />'
             )
             fit = bg.get("fit", "cover")
-            par = "none" if fit == "stretch" else ("xMidYMid meet" if fit == "contain" else "xMidYMid slice")
+            par = (
+                "none"
+                if fit == "stretch"
+                else ("xMidYMid meet" if fit == "contain" else "xMidYMid slice")
+            )
             op = float(bg.get("opacity", 1.0))
             parts.append(
                 f'  <image href="{html.escape(str(bg.get("data_url", "")), quote=True)}" '
@@ -709,10 +566,13 @@ def render_spec_to_svg(spec: dict[str, Any]) -> str:
                 )
         else:
             col = str(bg.get("color", theme["background"]))
-            parts.append(f'  <rect width="{width}" height="{height}" fill="{html.escape(col)}" />')
+            parts.append(
+                f'  <rect width="{width}" height="{height}" fill="{html.escape(col)}" />'
+            )
 
     pad = float(theme["padding"])
-    fscale_global = float(theme.get("font_scale", 1.0))
+    fig_ui = _compute_fig_ui_scale(width, height)
+    fscale_global = float(theme.get("font_scale", 1.0)) * fig_ui
     title_px = int(round(18 * fscale_global))
     sub_px = int(round(13 * fscale_global))
     if spec.get("title"):
@@ -728,7 +588,7 @@ def render_spec_to_svg(spec: dict[str, Any]) -> str:
         parts.append(
             f'  <text x="{pad}" y="{sub_y:.1f}" fill="{html.escape(theme["subtitle_color"])}" '
             f'font-family="{font_family}" font-size="{sub_px}">'
-            f'{html.escape(spec["subtitle"])}</text>'
+            f"{html.escape(spec['subtitle'])}</text>"
         )
 
     rects = _compute_grid_rects(spec, width, height)
@@ -739,10 +599,10 @@ def render_spec_to_svg(spec: dict[str, Any]) -> str:
         )
         variant = cs["variant"]
         rx, ry, rw, rh = rects[cell["id"]]
-        radius = min(10.0, float(cs["radius"])) if variant == "text" else float(cs["radius"])
+        radius = (
+            min(10.0, float(cs["radius"])) if variant == "text" else float(cs["radius"])
+        )
         clip_id = f"fx_clip_{idx}"
-        cell_font = html.escape(MONOSPACE_STACK if variant == "text" else cs["font"], quote=True)
-        fscale = float(cs["font_scale"])
 
         parts.append(
             f'  <defs><clipPath id="{clip_id}">'
@@ -752,7 +612,11 @@ def render_spec_to_svg(spec: dict[str, Any]) -> str:
 
         is_rev = variant == "reverse"
         rev_ink = cs["reverse_ink"]
-        surf_col = cs["accent"] if is_rev else ("#090d16" if variant == "text" else cs["surface"])
+        surf_col = (
+            cs["accent"]
+            if is_rev
+            else ("#090d16" if variant == "text" else cs["surface"])
+        )
         surf_op = float(cs["surface_opacity"]) if variant != "text" else 0.74
         b_col = rev_ink if is_rev else cs["border"]
         b_op = 0.20 if is_rev else float(cs["border_opacity"])
@@ -764,8 +628,14 @@ def render_spec_to_svg(spec: dict[str, Any]) -> str:
             f'stroke-width="{float(cs["border_width"]):.2f}" />'
         )
 
-        acc_w = max(4.0, float(cs["accent_width"]) * 0.75) if variant == "text" else float(cs["accent_width"])
-        d_path = _svg_tapered_accent_path(rx, ry, rw, rh, radius, str(cs["accent_side"]), acc_w)
+        acc_w = (
+            max(4.0, float(cs["accent_width"]) * 0.75)
+            if variant == "text"
+            else float(cs["accent_width"])
+        )
+        d_path = _svg_tapered_accent_path(
+            rx, ry, rw, rh, radius, str(cs["accent_side"]), acc_w
+        )
         if d_path:
             c_col = rev_ink if is_rev else cs["accent"]
             c_op = 0.30 if is_rev else 1.0
@@ -774,52 +644,9 @@ def render_spec_to_svg(spec: dict[str, Any]) -> str:
                 f'fill-rule="evenodd" clip-path="url(#{clip_id})" />'
             )
 
-        pad_x = 18.0 if variant == "text" else min(28.0, max(16.0, rw * 0.07))
-        pad_y = 14.0 if variant == "text" else min(22.0, max(12.0, rh * 0.085))
-        label = cell.get("label", "")
-        txt_op = float(cs["text_opacity"])
-        mut_op = float(cs["muted_opacity"])
-
-        lbl_col = rev_ink if is_rev else cs["muted"]
-        val_col = rev_ink if is_rev else cs["text"]
-        unit_col = rev_ink if is_rev else cs["unit_color"]
-
-        if label:
-            lbl_px = int(round((13.0 if variant == "text" else min(16.0, max(11.0, rh * 0.085))) * fscale))
-            lbl_str = f"┤ {label} ├" if variant == "text" else label
-            parts.append(
-                f'  <text x="{rx + pad_x:.1f}" y="{ry + pad_y + lbl_px:.1f}" '
-                f'fill="{html.escape(lbl_col)}" fill-opacity="{mut_op:.3f}" font-family="{cell_font}" '
-                f'font-size="{lbl_px}" font-weight="600">{html.escape(lbl_str)}</text>'
-            )
-
-        val_px = int(round(max(18.0, min(rh * 0.42, rw * 0.28, 84.0) * fscale)))
-        unit_px = max(13, int(round(val_px * 0.42)))
-        cy = ry + rh * (0.58 if label else 0.52)
-        cx = rx + rw / 2.0
-        formatted = html.escape(str(cell.get("formatted", cell.get("value", ""))))
-        unit = html.escape(cell.get("unit", ""))
-
-        unit_span = (
-            f'<tspan fill="{html.escape(unit_col)}" fill-opacity="{(mut_op if is_rev else txt_op):.3f}" '
-            f'font-size="{unit_px}" font-weight="600"> {unit}</tspan>'
-            if unit
-            else ""
-        )
-        parts.append(
-            f'  <text x="{cx:.1f}" y="{cy:.1f}" text-anchor="middle" dominant-baseline="middle" '
-            f'fill="{html.escape(val_col)}" fill-opacity="{txt_op:.3f}" font-family="{cell_font}" '
-            f'font-size="{val_px}" font-weight="700">{formatted}{unit_span}</text>'
-        )
-
-        if cell.get("description") and rh >= 130:
-            desc_px = int(round(12 * fscale))
-            d_txt = f"// {cell['description']}" if variant == "text" else cell["description"]
-            parts.append(
-                f'  <text x="{cx:.1f}" y="{ry + rh - pad_y:.1f}" text-anchor="middle" '
-                f'fill="{html.escape(lbl_col)}" fill-opacity="{mut_op:.3f}" font-family="{cell_font}" '
-                f'font-size="{desc_px}">{html.escape(d_txt)}</text>'
-            )
+        svg_fn = get_svg_renderer(str(cell.get("kind", "number")))
+        if svg_fn is not None:
+            parts.extend(svg_fn(cell, cs, rx, ry, rw, rh))
 
     parts.append("</svg>")
     return "\n".join(parts)
@@ -938,7 +765,9 @@ def save_video(
     finally:
         proc.stdin.close()
 
-    stderr_out = proc.stderr.read().decode("utf-8", errors="replace") if proc.stderr else ""
+    stderr_out = (
+        proc.stderr.read().decode("utf-8", errors="replace") if proc.stderr else ""
+    )
     ret = proc.wait()
     if ret != 0:
         raise RuntimeError(f"ffmpeg video export failed (exit {ret}): {stderr_out}")

@@ -70,7 +70,9 @@ def test_gradient_background_and_translucent_cards_export(tmp_path):
         accent_side="left",
     )
     fig[0, 0].number(125, unit="k€", label="Gauche")
-    fig[0, 1].style(accent_side="right", accent="#34d399").number(240, unit="k€", label="Droite")
+    fig[0, 1].style(accent_side="right", accent="#34d399").number(
+        240, unit="k€", label="Droite"
+    )
 
     png_path = tmp_path / "grad.png"
     svg_path = tmp_path / "grad.svg"
@@ -103,12 +105,16 @@ def test_background_image_and_all_accent_sides(tmp_path):
     bg.save(bg_img_path)
 
     fig = fx.Figure(rows=2, cols=3, title="Charte Image", size=(720, 420))
-    fig.style(background=fx.BackgroundImage(bg_img_path, fit="cover", overlay_opacity=0.05))
+    fig.style(
+        background=fx.BackgroundImage(bg_img_path, fit="cover", overlay_opacity=0.05)
+    )
 
     sides = ["left", "right", "top", "bottom", "none", "left"]
     for idx, side in enumerate(sides):
         r, c = divmod(idx, 3)
-        fig[r, c].style(accent_side=side, accent_width=4.0).number(idx * 10, label=f"Side {side}")
+        fig[r, c].style(accent_side=side, accent_width=4.0).number(
+            idx * 10, label=f"Side {side}"
+        )
 
     # Bright background image should auto-select dark veil (#0f172a)
     assert fig.resolved_theme["surface"].lower() == "#0f172a"

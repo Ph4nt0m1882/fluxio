@@ -35,13 +35,85 @@ class ToolbarConfig:
         ...
     def to_dict(self) -> dict[str, bool]: ...
 
-class NumberCell:
-    """Atomic numeric KPI / value display cell supporting static, callable, or generator sources."""
-    def __init__(self, id: str, row: int, col: int, source: NumberSource, label: str = '', unit: str = '', prefix: str = '', precision: int | None = None, color: str | None = None, description: str = '', row_span: int = 1, col_span: int = 1) -> None:
+class Visual:
+    """Level-1 root base class for all Fluxio visualizations."""
+    def __init__(self, *, label: str = '', description: str = '', color: str | None = None, title: str = '', subtitle: str = '', theme: str = 'dark', style: Mapping[str, Any] | None = None, size: tuple[int, int] = (780, 360), fps: int = 60, toolbar: bool | dict[str, bool] = True, row: int = 0, col: int = 0, row_span: int = 1, col_span: int = 1) -> None:
         """Initialize self.  See help(type(self)) for accurate signature."""
         ...
-    def style(self, **kwargs: Any) -> NumberCell:
-        """Customize visual aesthetics specifically for this cell (chainable)."""
+    def style(self, **kwargs: Any) -> Visual:
+        """Customize aesthetics for this visual (chainable; supports both cell & standalone keys)."""
+        ...
+    @property
+    def is_dynamic(self) -> bool: ...
+    def reset_cursor(self) -> None:
+        """Reset any stateful stream/generator cursors to t=0."""
+        ...
+    def evaluate_tick_update(self, t: float, step_index: int | None = None) -> dict[str, Any]: ...
+    def to_dict(self, *, theme_dict: Mapping[str, Any], t: float = 0.0, step_index: int | None = 0, bake_duration: float | None = None, fps: int = 30) -> dict[str, Any]: ...
+    def to_spec(self, *, t: float = 0.0, step_index: int | None = 0, bake_duration: float | None = None) -> dict[str, Any]:
+        """Serialize this visual as a standalone 1x1 FigureSpec dictionary."""
+        ...
+    def to_text(self, *, ansi: bool = True, width: int | None = None, t: float = 0.0, step_index: int | None = 0) -> str:
+        """Render this visual as a formatted Unicode TUI string."""
+        ...
+    def reset_print(self) -> Visual:
+        """Reset in-place terminal cursor state for manual `print(visual)` loops."""
+        ...
+    def print(self, *, duration: float | None = None, fps: int | None = None, controls: bool = True, ansi: bool = True, width: int | None = None) -> None:
+        """Display this visual in the terminal or Jupyter stdout, animating in-place if dynamic."""
+        ...
+    def show(self, *, backend: str = 'auto', block: bool = True, host: str = '127.0.0.1', port: int = 0, close_after: float | None = None) -> str:
+        """Open this visual in an interactive desktop window."""
+        ...
+    def save(self, path: str | Path, *, duration: float = 3.0, fps: int | None = None, scale: float = 2.0) -> Path:
+        """Export this visual to `.png`, `.svg`, `.gif`, `.mp4`, `.webm`, `.html`, `.txt`, or `.ans`."""
+        ...
+
+class Indicator(Visual):
+    """Level-2 family for KPI indicators (`Number`, `Stat`, `Gauge`, `BarGauge`)."""
+    def __init__(self, *, unit: str = '', prefix: str = '', precision: int | None = None, **kwargs: Any) -> None:
+        """Initialize self.  See help(type(self)) for accurate signature."""
+        ...
+    def format_value(self, value: float) -> str: ...
+
+class Axis2D(Visual):
+    """Level-2 family for 1D/2D Cartesian axis charts (`Plot`, `Scatter`, `Bar`, `Hist`, `Boxplot`...)."""
+    def __init__(self, *, xlabel: str = '', ylabel: str = '', xscale: str = 'linear', yscale: str = 'linear', xlim: Sequence[float | None] | None = None, ylim: Sequence[float | None] | None = None, xmin: float | None = None, xmax: float | None = None, xstep: float | None = None, ymin: float | None = None, ymax: float | None = None, ystep: float | None = None, grid: bool = True, legend: bool | str = True, **kwargs: Any) -> None:
+        """Initialize self.  See help(type(self)) for accurate signature."""
+        ...
+    @property
+    def xlim(self) -> tuple[float, float] | None: ...
+    @property
+    def ylim(self) -> tuple[float, float] | None: ...
+
+class Field2D(Visual):
+    """Level-2 family for 2D matrices, meshes, contours & vector fields (`Imshow`, `Contour`, `Quiver`...)."""
+    def __init__(self, *, cmap: str = 'viridis', colorbar: bool = True, vmin: float | None = None, vmax: float | None = None, **kwargs: Any) -> None:
+        """Initialize self.  See help(type(self)) for accurate signature."""
+        ...
+
+class Polar2D(Visual):
+    """Level-2 family for angular / radial / circular charts (`Polar`, `Pie`...)."""
+    def __init__(self, *, start_angle: float = 90.0, clockwise: bool = False, **kwargs: Any) -> None:
+        """Initialize self.  See help(type(self)) for accurate signature."""
+        ...
+
+class Space3D(Visual):
+    """Level-2 family for 3D projected visualizations (`Plot3D`, `Scatter3D`, `Surface3D`, `Voxels`...)."""
+    def __init__(self, *, xlabel: str = 'X', ylabel: str = 'Y', zlabel: str = 'Z', elev: float = 28.0, azim: float = -55.0, **kwargs: Any) -> None:
+        """Initialize self.  See help(type(self)) for accurate signature."""
+        ...
+
+class Scene(Visual):
+    """Level-2 family for topologies, profiling, interactive explainers, and 2D/3D simulations."""
+    def __init__(self, *, interactive_controls: Mapping[str, Any] | None = None, **kwargs: Any) -> None:
+        """Initialize self.  See help(type(self)) for accurate signature."""
+        ...
+
+class Number(Indicator):
+    """Numeric KPI / live metric card supporting static numbers, `f(t)` callables, and Python generators."""
+    def __init__(self, value: NumberSource, *, label: str = '', unit: str = '', prefix: str = '', precision: int | None = None, color: str | None = None, description: str = '', title: str = '', subtitle: str = '', theme: str = 'dark', style: Mapping[str, Any] | None = None, size: tuple[int, int] = (780, 340), fps: int = 60, toolbar: bool | dict[str, bool] = True, row: int = 0, col: int = 0, row_span: int = 1, col_span: int = 1) -> None:
+        """Initialize self.  See help(type(self)) for accurate signature."""
         ...
     @property
     def is_callable(self) -> bool: ...
@@ -49,11 +121,30 @@ class NumberCell:
     def is_iterator(self) -> bool: ...
     @property
     def is_dynamic(self) -> bool: ...
+    def reset_cursor(self) -> None:
+        """Reset any stateful stream/generator cursors to t=0."""
+        ...
     def evaluate_at(self, t: float, step_index: int | None = None) -> float:
         """Evaluate the numeric cell at time `t` (seconds) or sequential step `step_index`."""
         ...
-    def reset_cursor(self) -> None: ...
+    def evaluate_tick_update(self, t: float, step_index: int | None = None) -> dict[str, Any]: ...
     def sample_frames(self, duration: float, fps: int) -> list[float] | None: ...
+    def to_dict(self, *, theme_dict: Mapping[str, Any], t: float = 0.0, step_index: int | None = 0, bake_duration: float | None = None, fps: int = 30) -> dict[str, Any]: ...
+
+class Plot(Axis2D):
+    """2D Cartesian line chart (`Visual` -> `Axis2D` -> `Plot`) supporting multi-series superposition."""
+    def __init__(self, x_or_y: Any = None, y: Any = None, *, label: str = '', color: str | None = None, linewidth: float = 2.4, linestyle: str = 'solid', marker: str | None = None, fill: bool | None = None, fill_alpha: float = 0.12, max_points: int = 120, card_title: str = '', xlabel: str = '', ylabel: str = '', xscale: str = 'linear', yscale: str = 'linear', xlim: Sequence[float | None] | None = None, ylim: Sequence[float | None] | None = None, xmin: float | None = None, xmax: float | None = None, xstep: float | None = None, ymin: float | None = None, ymax: float | None = None, ystep: float | None = None, grid: bool = True, legend: bool | str = True, description: str = '', title: str = '', subtitle: str = '', theme: str = 'dark', style: Mapping[str, Any] | None = None, size: tuple[int, int] = (840, 460), fps: int = 60, toolbar: bool | dict[str, bool] = True, row: int = 0, col: int = 0, row_span: int = 1, col_span: int = 1) -> None:
+        """Initialize self.  See help(type(self)) for accurate signature."""
+        ...
+    def plot(self, x_or_y: Any, y: Any = None, *, label: str = '', color: str | None = None, linewidth: float = 2.4, linestyle: str = 'solid', marker: str | None = None, fill: bool | None = None, fill_alpha: float = 0.12, max_points: int = 120, xlabel: str | None = None, ylabel: str | None = None, card_title: str | None = None, xlim: Sequence[float | None] | None = None, ylim: Sequence[float | None] | None = None, xmin: float | None = None, xmax: float | None = None, xstep: float | None = None, ymin: float | None = None, ymax: float | None = None, ystep: float | None = None, legend: bool | str | None = None) -> Plot:
+        """Superpose an additional curve series onto this `Plot` (chainable)."""
+        ...
+    @property
+    def is_dynamic(self) -> bool: ...
+    def reset_cursor(self) -> None:
+        """Reset any stateful stream/generator cursors to t=0."""
+        ...
+    def evaluate_tick_update(self, t: float, step_index: int | None = None) -> dict[str, Any]: ...
     def to_dict(self, *, theme_dict: Mapping[str, Any], t: float = 0.0, step_index: int | None = 0, bake_duration: float | None = None, fps: int = 30) -> dict[str, Any]: ...
 
 class FigureStyle:
@@ -65,6 +156,7 @@ class FigureStyle:
         """Call self as a function."""
         ...
     def __getitem__(self, key: str) -> Any: ...
+    def __setitem__(self, key: str, value: Any) -> None: ...
 
 class SubplotSlot:
     """Proxy returned by `fig[row, col]` for cell placement and per-cell `.style(...)`."""
@@ -74,44 +166,47 @@ class SubplotSlot:
     def style(self, *, variant: str | None = None, surface: str | None = None, surface_opacity: float | None = None, border: str | None = None, border_opacity: float | None = None, border_width: float | None = None, hover_border_width: float | None = None, radius: float | None = None, accent: str | None = None, accent_side: str | None = None, accent_width: float | None = None, text: str | None = None, text_opacity: float | None = None, muted: str | None = None, unit_color: str | None = None, font: str | None = None, font_scale: float | None = None, **extra: Any) -> SubplotSlot:
         """Configure aesthetics specifically for cell `(row, col)` (chainable)."""
         ...
-    def number(self, value: NumberSource, *, label: str = '', unit: str = '', prefix: str = '', precision: int | None = None, color: str | None = None, description: str = '', row_span: int = 1, col_span: int = 1) -> NumberCell: ...
+    def add(self, visual: Visual, *, row_span: int | None = None, col_span: int | None = None) -> Visual:
+        """Place a `Visual` instance at this `(row, col)` grid slot."""
+        ...
+    def number(self, value: NumberSource, *, label: str = '', unit: str = '', prefix: str = '', precision: int | None = None, color: str | None = None, description: str = '', row_span: int = 1, col_span: int = 1) -> Number: ...
+    def plot(self, x_or_y: Any, y: Any = None, *, label: str = '', color: str | None = None, linewidth: float = 2.4, linestyle: str = 'solid', marker: str | None = None, fill: bool | None = None, fill_alpha: float = 0.12, max_points: int = 120, card_title: str = '', xlabel: str = '', ylabel: str = '', xlim: Sequence[float | None] | None = None, ylim: Sequence[float | None] | None = None, xmin: float | None = None, xmax: float | None = None, xstep: float | None = None, ymin: float | None = None, ymax: float | None = None, ystep: float | None = None, grid: bool = True, legend: bool | str = True, description: str = '', row_span: int = 1, col_span: int = 1) -> Plot: ...
 
 class Figure:
     """Global Fluxio visualization container supporting grids, custom styles, terminal print, and exports."""
-    def __init__(self, rows: int = 1, cols: int = 1, *, title: str = '', subtitle: str = '', theme: str = 'dark', style: dict[str, Any] | None = None, size: tuple[int, int] = (900, 520), fps: int = 30, toolbar: bool | dict[str, bool] = True) -> None:
+    def __init__(self, rows: int = 1, cols: int = 1, *, title: str = '', subtitle: str = '', theme: str = 'dark', style: dict[str, Any] | None = None, size: tuple[int, int] = (900, 520), fps: int = 60, toolbar: bool | dict[str, bool] = True) -> None:
         """Initialize self.  See help(type(self)) for accurate signature."""
         ...
     def __getitem__(self, key: tuple[int, int] | int) -> SubplotSlot: ...
+    def __setitem__(self, key: tuple[int, int] | int, visual: Visual) -> None: ...
     @property
     def resolved_theme(self) -> dict[str, Any]: ...
     @property
     def is_dynamic(self) -> bool: ...
-    def number(self, value: NumberSource, *, label: str = '', unit: str = '', prefix: str = '', precision: int | None = None, color: str | None = None, description: str = '', row: int | None = None, col: int | None = None, row_span: int = 1, col_span: int = 1) -> NumberCell:
-        """Add a static or dynamic numeric display widget to the Figure grid."""
+    def add(self, visual: Visual, *, row: int | None = None, col: int | None = None, row_span: int | None = None, col_span: int | None = None) -> Visual:
+        """Attach any `Visual` subclass instance to the Figure grid."""
+        ...
+    def number(self, value: NumberSource, *, label: str = '', unit: str = '', prefix: str = '', precision: int | None = None, color: str | None = None, description: str = '', row: int | None = None, col: int | None = None, row_span: int = 1, col_span: int = 1) -> Number:
+        """Add a static or dynamic `Number` indicator widget to the Figure grid."""
+        ...
+    def plot(self, x_or_y: Any, y: Any = None, *, label: str = '', color: str | None = None, linewidth: float = 2.4, linestyle: str = 'solid', marker: str | None = None, fill: bool | None = None, fill_alpha: float = 0.12, max_points: int = 120, card_title: str = '', xlabel: str = '', ylabel: str = '', xlim: Sequence[float | None] | None = None, ylim: Sequence[float | None] | None = None, xmin: float | None = None, xmax: float | None = None, xstep: float | None = None, ymin: float | None = None, ymax: float | None = None, ystep: float | None = None, grid: bool = True, legend: bool | str = True, description: str = '', row: int | None = None, col: int | None = None, row_span: int = 1, col_span: int = 1) -> Plot:
+        """Add or superpose a 2D line series (`Plot`) on the target grid cell."""
         ...
     def evaluate_frame(self, t: float, *, step_index: int | None = None) -> list[dict[str, Any]]: ...
     def to_spec(self, *, t: float = 0.0, step_index: int | None = 0, bake_duration: float | None = None) -> dict[str, Any]: ...
-    def to_text(self, *, ansi: bool = True, width: int | None = None, t: float = 0.0, step_index: int | None = 0) -> str:
-        """Render the Figure as a formatted Unicode TUI string (with optional ANSI TrueColor)."""
-        ...
-    def reset_print(self) -> Figure:
-        """Reset in-place cursor state for manual `print(fig)` loops."""
-        ...
-    def print(self, *, duration: float | None = None, fps: int | None = None, controls: bool = True, ansi: bool = True, width: int | None = None) -> None:
-        """Display the Figure in the terminal or Jupyter stdout, animating in-place if dynamic."""
-        ...
+    def to_text(self, *, ansi: bool = True, width: int | None = None, t: float = 0.0, step_index: int | None = 0) -> str: ...
+    def reset_print(self) -> Figure: ...
+    def print(self, *, duration: float | None = None, fps: int | None = None, controls: bool = True, ansi: bool = True, width: int | None = None) -> None: ...
     def show(self, *, backend: str = 'auto', block: bool = True, host: str = '127.0.0.1', port: int = 0, close_after: float | None = None) -> str: ...
-    def save(self, path: str | Path, *, duration: float = 3.0, fps: int | None = None, scale: float = 2.0) -> Path:
-        """Export the Figure to `.png`, `.svg`, `.gif`, `.mp4`, `.webm`, `.html`, `.txt`, or `.ans`."""
-        ...
+    def save(self, path: str | Path, *, duration: float = 3.0, fps: int | None = None, scale: float = 2.0) -> Path: ...
 
-def show(fig: Figure, *, backend: str = 'auto', block: bool = True, host: str = '127.0.0.1', port: int = 0, close_after: float | None = None) -> str:
+def show(fig: Figure | Visual, *, backend: str = 'auto', block: bool = True, host: str = '127.0.0.1', port: int = 0, close_after: float | None = None) -> str:
     """Open an interactive Fluxio window (like `matplotlib.pyplot.show()`)."""
     ...
-def save(fig: Figure, path: str | Path, *, duration: float = 3.0, fps: int | None = None, scale: float = 2.0) -> Path:
+def save(fig: Figure | Visual, path: str | Path, *, duration: float = 3.0, fps: int | None = None, scale: float = 2.0) -> Path:
     """Convenience function calling `fig.save(...)`."""
     ...
-def print(fig: Figure, *, duration: float | None = None, fps: int | None = None, controls: bool = True, ansi: bool = True, width: int | None = None) -> None:
+def print(fig: Figure | Visual, *, duration: float | None = None, fps: int | None = None, controls: bool = True, ansi: bool = True, width: int | None = None) -> None:
     """Convenience wrapper calling `fig.print(...)` for live in-place terminal/Jupyter display."""
     ...
 def llm_context(mode: str = 'compact', *, chart: str | None = None) -> str:
@@ -123,42 +218,254 @@ def llm_context(mode: str = 'compact', *, chart: str | None = None) -> str:
 
 <!-- source: docs/index.md -->
 
-# Fluxio
+<h3 class="fx-card-title">Core Concepts &amp; Tutorial</h3>
+      <p class="fx-card-desc">
+        Progressive walkthrough from a 2-line minimal chart to multi-cell grids, cascading <code>.style()</code>, live <code>.gif</code> animations, and terminal <code>print(fig)</code> outputs.
+      </p>
+    </div>
+    <span class="fx-card-cta">Start the Tutorial →</span>
+  </a>
 
-**Fluxio** (`import fluxio as fx`) is a modern, lightweight, real-time visualization engine built on **Python + zero-dependency TypeScript `<canvas>`** (~28 KB bundle).
+  <a class="fx-card fx-emerald fx-right" href="developer/">
+    <div>
+      <h3 class="fx-card-title">Developer &amp; Outputs</h3>
+      <p class="fx-card-desc">
+        3-level OOP class hierarchy (<code>Visual → Family → Chart</code>), native windows, persistent Jupyter cells, live in-place terminal <code>print(fig)</code>, and Chromium-free <code>PNG/SVG/GIF/MP4/HTML</code> exports.
+      </p>
+    </div>
+    <span class="fx-card-cta">Read Engine &amp; Outputs →</span>
+  </a>
 
-It allows a **single `Figure` object** to render seamlessly across desktop windows, Jupyter notebooks, ANSI TrueColor terminals, static/animated presentation exports, and embedded AI chatbot WebViews.
+  <a class="fx-card fx-orange" href="charts/">
+    <div>
+      <h3 class="fx-card-title">Visualizations Gallery</h3>
+      <p class="fx-card-desc">
+        Browse every available chart and KPI indicator with live Python-generated previews and dedicated one-page API references (<code>Number</code>, <code>Plot</code>, and more).
+      </p>
+    </div>
+    <span class="fx-card-cta">Open Visual Gallery →</span>
+  </a>
 
-## Quickstart
+  <a class="fx-card fx-purple fx-right" href="ai-integration/">
+    <div>
+      <h3 class="fx-card-title">AI &amp; Chatbot Integration</h3>
+      <p class="fx-card-desc">
+        Zero-hallucination code generation for local and frontier LLMs via runtime <code>fx.llm_context()</code>, <code>llms.txt</code>, <code>llms-full.txt</code>, and condensed <code>fluxio.pyi</code> stubs.
+      </p>
+    </div>
+    <span class="fx-card-cta">Configure AI Context →</span>
+  </a>
+</div>
+
+---
+
+## Quickstart in 10 Lines
 
 ```python
+import math
 import fluxio as fx
 
-fig = fx.Figure(rows=1, cols=2, title="System Overview", size=(900, 420))
-fig.style(accent="#38bdf8", accent_side="left", radius=20)
+fig = fx.Figure(rows=1, cols=2, title="Live Telemetry Overview", size=(960, 420), fps=24)
+fig.style(background=fx.Gradient(["#090d16", "#1e1b4b"], angle=135), radius=20)
 
-fig[0, 0].number(42.5, unit="°C", precision=1, label="SoC Temp")
-fig[0, 1].style(variant="reverse", accent="#059669", accent_side="right").number(
-    99.95, unit="%", precision=2, label="Availability"
+fig[0, 0].style(variant="reverse", accent="#059669", accent_side="left").number(
+    42.5, unit="°C", precision=1, label="SoC Temperature"
+)
+xs = [i * 0.2 for i in range(35)]
+fig[0, 1].style(accent="#38bdf8", accent_side="right").plot(
+    xs, [math.sin(x) * 30 + 50 for x in xs], label="Signal", xlabel="t (s)"
 )
 
-# 1. Interactive desktop window (zoom/pan, play/pause, PNG capture)
-fx.show(fig)
-
-# 2. Terminal ANSI TrueColor output (replaces plotext!)
-print(fig)
-
-# 3. Headless exports (no Chromium required)
-fig.save("slide.png")
-fig.save("standalone.html")
+print(fig)                # ANSI TrueColor + Unicode Braille in terminal!
+fx.show(fig)              # Interactive desktop window (zoom/pan, pause, PNG capture)
+fig.save("overview.png")  # High-DPI export in milliseconds
 ```
 
-## Documentation Sections
+---
 
-- **[Styling & Themes](styling.md)**: Cascading `fig.style(...)` and `fig[row, col].style(...)`, `Gradient`, `BackgroundImage`, adaptive translucent veils, tapered crescent borders, and `classic` / `reverse` / `text` variants.
-- **[Outputs & Exports](outputs.md)**: Desktop windows, persistent Jupyter cells, static & live terminal rendering (`print(fig)`, `fig.print()`), and multi-format exports (`PNG`, `SVG`, `GIF`, `MP4`, `HTML`, `TXT`).
-- **[Charts — `number()`](charts/number.md)**: Static, time-function `f(t)`, and Python generator (`yield`) numeric KPI widgets.
-- **[AI & LLM Integration](ai-integration.md)**: Token-efficient `llms.txt`, `llms-full.txt`, condensed `fluxio.pyi` type stubs, and runtime `fx.llm_context()`.
+<!-- source: docs/tutorial.md -->
+
+# Step-by-Step Tutorial
+
+This tutorial walks you from the **absolute minimal 2-line Fluxio script** up to multi-panel dashboards, custom corporate themes, real-time animated `.gif` / WebSocket streams, and ANSI terminal rendering.
+
+---
+
+## 1. The Minimal Example (2 Lines)
+
+Every Fluxio visualization inherits from `fx.Visual`, meaning **you do not even need to create a `Figure` container** when displaying a single chart or KPI:
+
+=== "Minimal `Plot`"
+
+    ```python
+    import fluxio as fx
+
+    fx.Plot([12, 28, 19, 37, 31, 46]).show()
+    ```
+
+        !!! info "Specificity: Single-Argument `y`"
+        When you pass only one sequence (`[12, 28, ...]`), Fluxio automatically generates `x = [0, 1, 2, ...]` and computes human-readable axis ticks (*nice numbers*) with 6% vertical breathing room.
+
+=== "Minimal `Number`"
+
+    ```python
+    import fluxio as fx
+
+    fx.Number(42.5, unit="°C", label="Core Temp").show()
+    ```
+
+    === "Terminal (`print`)"
+
+    Replace `.show()` with Python's built-in `print(...)` on **the exact same object** — no extra library (`plotext`) required:
+
+    ```python
+    import fluxio as fx
+
+    p = fx.Plot([12, 28, 19, 37, 31, 46], label="Requests")
+    print(p)
+    ```
+
+    ---
+
+## 2. Multi-Cell Grids & Superposition (`fx.Figure`)
+
+When combining multiple visualizations in one window or slide, create a `Figure(rows, cols)` grid.
+
+### Key Specificities of `Figure` Grids
+
+1. **Two Equivalent Placement Syntaxes**:
+   - **Builder methods**: `fig[0, 0].number(...)` or `fig.number(..., row=0, col=0)` (auto-places into the next free slot if `row`/`col` are omitted).
+   - **Object assignment**: `fig[0, 0] = fx.Number(...)`.
+2. **Row & Column Spans**: Pass `col_span=2` or `row_span=2` to make a header KPI or wide chart span multiple cells.
+3. **Automatic Curve Superposition on `Plot`**: Calling `fig[r, c].plot(...)` multiple times on **the same `(row, col)` slot** superposes additional curves onto the same axes (with automatic palette cycling and inline legend) rather than overwriting the cell!
+
+```python
+import math
+import fluxio as fx
+
+fig = fx.Figure(rows=1, cols=2, title="Thermal Experiment", size=(920, 400))
+
+# Left cell (0, 0): KPI card
+fig[0, 0].number(250.0, unit="°C", precision=1, label="Target Asymptote")
+
+# Right cell (0, 1): two superposed curves on the same Plot!
+xs = [i * 0.25 for i in range(25)]
+fig[0, 1].plot(xs, [800 * math.exp(-0.3 * x) + 250 for x in xs], label="Theory", xlabel="t (s)")
+fig[0, 1].plot(
+    xs,
+    [800 * math.exp(-0.3 * x) + 250 + 35 * math.sin(x * 2) for x in xs],
+    label="Sensor",
+    linestyle="dashed",
+    marker="circle",
+)
+
+fx.show(fig)
+```
+
+---
+
+## 3. Cascading Aesthetics, Variants & Crescents (`.style()`)
+
+Fluxio separates **data** from **aesthetics** through a chainable `.style(...)` method that cascades from the global `Figure` down to individual cells:
+
+```python
+fig = fx.Figure(rows=1, cols=2, title="Corporate KPIs", theme="presentation")
+
+# 1. Global defaults for the entire figure
+fig.style(
+    background=fx.Gradient(["#090d16", "#1e1b4b"], angle=135),
+    accent="#38bdf8",
+    accent_side="left",   # Tapered crescent on the left (reading order)
+    radius=22,
+    hover_ms=220,         # Smooth 220ms hover transition (zero popping!)
+)
+
+# Cell (0, 0) inherits global left cyan crescent & translucent light veil
+fig[0, 0].number(99.95, unit="%", precision=2, label="Availability")
+
+# 2. Local override on cell (0, 1): solid `reverse` fill + right emerald crescent
+fig[0, 1].style(
+    variant="reverse",
+    accent="#059669",
+    accent_side="right",
+).number(14.2, unit="ms", precision=1, label="Median Latency")
+```
+
+### Specificities Worth Knowing
+
+- **Adaptive Translucent Veil**: In `variant="classic"`, Fluxio computes the WCAG luminance of your background (`#hex`, `fx.Gradient`, or `fx.BackgroundImage`) and automatically picks a subtle **light glass veil (~10% `#ffffff`)** on dark backgrounds or a **dark glass veil (~8% `#0f172a`)** on light backgrounds.
+- **PowerPoint Transparency**: Set `fig.style(transparent=True)` before `fig.save("slide.png")` or `fig.save("slide.svg")` to export an alpha-transparent graphic whose card contrast is still calibrated for your target slide color.
+- **Graphical TUI Mode (`variant="text"`)**: Switches the Canvas/PNG/SVG renderer to a `btop`-inspired console look (`┤ Label ├` headers, monospace font, and segmented 6-row block-matrix digits):
+
+---
+
+## 4. Real-Time Dynamics & Animated `.gif` / `.mp4` Exports
+
+Any Fluxio chart accepts **dynamic Python sources** without timers, callbacks, or boilerplate threads:
+
+1. **Time Function `Callable[[float], ...]`**: Receives elapsed time `t` in seconds.
+   - On `Plot`, returning a **single float** `f(t) -> y` (or `(x, y)` point) automatically activates **Grafana-style rolling window mode** (`max_points=120`).
+   - Returning a **pair of sequences** `f(t) -> (xs, ys)` activates **animated waveform mode** (re-draws the entire curve at instant `t`).
+2. **Python Generator (`yield`)**: Yields values step-by-step on each frame tick.
+
+```python
+import math
+import fluxio as fx
+
+fig = fx.Figure(
+    rows=1,
+    cols=2,
+    title="Live Sensor & Travelling Wave",
+    size=(880, 380),
+    fps=20,
+)
+fig.style(background=fx.Gradient(["#090d16", "#0f172a", "#1e1b4b"], angle=135), radius=20)
+
+# Left: dynamic KPI oscillating smoothly
+fig[0, 0].style(variant="reverse", accent="#059669", accent_side="left").number(
+    lambda t: 850.0 + 95.0 * math.sin(2.0 * math.pi * t / 2.0),
+    unit="°C",
+    precision=1,
+    label="Magma Chamber",
+)
+
+# Right: animated travelling wave
+xs = [i * 0.18 for i in range(36)]
+fig[0, 1].style(accent="#38bdf8", accent_side="right").plot(
+    lambda t: (
+        xs,
+        [math.sin(x - 2.0 * math.pi * t / 2.0) * math.cos(x * 0.3) for x in xs],
+    ),
+    label="Seismic Wave",
+    xlabel="Distance (km)",
+    ylim=(-1.15, 1.15),
+)
+
+# Export directly to an animated GIF, MP4 video, or offline interactive HTML!
+fig.save("live_demo.gif", duration=2.0, fps=16)
+fig.save("live_demo.mp4", duration=2.0, fps=24)
+fig.save("live_demo.html", duration=2.0, fps=24)
+```
+
+---
+
+## 5. Live Terminal Rendering (`print(fig)` vs `fig.print()`)
+
+Even dynamic animations work directly inside an SSH session, Raspberry Pi console, or Jupyter Notebook `stdout`:
+
+- **Manual Loop Control (`print(fig)`)**: Calling Python's standard `print(fig)` repeatedly tracks how many lines were printed and uses ANSI cursor-up (`\x1b[<N>A`) in TTY terminals (or `clear_output(wait=True)` in Jupyter) to **update in-place without scrolling**:
+  ```python
+  import time
+
+  for _ in range(40):
+      print(fig)        # Updates in-place on frame 2..40!
+      time.sleep(0.05)
+  ```
+- **Automatic Live Loop (`fig.print()` / `fx.print(fig)`)**: Runs the frame loop for you with live non-blocking keyboard controls (**`Space`** = Pause/Play, **`R`** = Reset, **`Q` / `Ctrl+C`** = Quit):
+  ```python
+  fig.print()                 # Runs interactively until Q or Ctrl+C
+  fig.print(duration=5.0)     # Runs for 5 seconds then exits cleanly
+  ```
 
 ---
 
@@ -189,11 +496,15 @@ Every figure or individual cell supports three visual variants via `.style(varia
 - **Hex color string**: `"#0b1120"` or `"transparent"` (or `fig.style(transparent=True)` for alpha-transparent PowerPoint exports).
 - **Linear or Radial Gradient**:
   ```python
-  fig.style(background=fx.Gradient(["#090d16", "#1e1b4b", "#0f172a"], angle=135, kind="linear"))
+  fig.style(
+      background=fx.Gradient(["#090d16", "#1e1b4b", "#0f172a"], angle=135, kind="linear")
+  )
   ```
 - **Self-contained Image** (auto-encoded to Base64 for offline `.html` & Jupyter):
   ```python
-  fig.style(background=fx.BackgroundImage("corporate_slide.png", fit="cover", opacity=1.0))
+  fig.style(
+      background=fx.BackgroundImage("corporate_slide.png", fit="cover", opacity=1.0)
+  )
   ```
 
 Fluxio automatically measures the perceived WCAG luminance of solid colors, gradients, and images to pick a harmonious light or dark translucent veil and readable text colors unless explicitly overridden.
@@ -202,6 +513,74 @@ Fluxio automatically measures the perceived WCAG luminance of solid colors, grad
 
 - `accent_side`: `"left"` | `"right"` | `"top"` | `"bottom"` | `"none"` (default `"top"`). Renders a CSS-like tapered rounded crescent (`accent_width`, default `7.0`) that merges seamlessly into the thin card border (`border_width`, `border_opacity`).
 - `hover_ms`: Smooth `smoothstep` transition duration in milliseconds (default `200` ms) when hovering cards in interactive views — eliminating abrupt visual popping while dropping back to 0% CPU once settled.
+
+---
+
+<!-- source: docs/developer.md -->
+
+# Architecture & 3-Level OOP Hierarchy
+
+This section covers the non-visual engineering backbone of Fluxio: how containers, class inheritance, real-time streaming, and multi-target renderers fit together.
+
+## 1. Hybrid Container + Standalone Objects
+
+Every visualization in Fluxio can be instantiated and rendered **in two equivalent ways**:
+
+1. **Standalone Object** — Every chart inherits from `fx.Visual`, giving it built-in `.style(...)`, `.show()`, `.save(...)`, `.print()`, `print(v)`, and Jupyter `_repr_html_()`:
+   ```python
+   import fluxio as fx
+
+   p = fx.Plot([10, 25, 18, 32], label="Throughput", title="API Traffic")
+   p.style(accent="#34d399", accent_side="left")
+   p.save("traffic.png")
+   ```
+2. **Multi-Cell `Figure` Grid** — Compose heterogeneous charts side-by-side using Matplotlib-style `(row, col)` indexing or builder methods:
+   ```python
+   fig = fx.Figure(rows=1, cols=2, title="System Dashboard")
+   fig[0, 0] = fx.Number(42.5, unit="°C", label="SoC Temp")
+   fig[0, 1].plot([10, 25, 18, 32], label="Throughput")
+   fx.show(fig)
+   ```
+
+---
+
+## 2. Strict 3-Level Inheritance Tree
+
+To keep the codebase modular across 50+ chart types without deep inheritance chains, Fluxio enforces **at most 3 class levels** (`1 concrete chart = 1 dedicated module`):
+
+```text
+Visual (Level 1 — style, dynamic lifecycle, standalone show/save/print/Jupyter)
+├── Indicator (Level 2 — numeric formatting, units, prefixes)
+│   └── Number (Level 3 — src/fluxio/charts/number.py)
+├── Axis2D (Level 2 — X/Y bounds, nice ticks, gridlines, labels, Braille canvas)
+│   └── Plot (Level 3 — src/fluxio/charts/plot.py)
+├── Field2D (Level 2 — 2D matrices, meshes, colormaps, colorbars)
+├── Polar2D (Level 2 — radial & angular coordinates)
+├── Space3D (Level 2 — 3D camera elevation/azimuth & projection)
+└── Scene (Level 2 — node graphs, flame graphs, interactive explainers, simulations)
+```
+
+---
+
+## 3. Declarative Scene Protocol & 3 Synchronized Renderers
+
+Python never embeds brittle HTML/JS strings directly per chart. Instead, `Figure.to_spec()` emits a pure **JSON Scene Specification** consumed by three lightweight engines:
+
+| Engine | Implementation | Target Environments |
+| :--- | :--- | :--- |
+| **Canvas 2D Viewer** | Zero-dependency TypeScript (`web/src/`, ~38 KB minified) | `fx.show()` (`pywebview` / `--app` browser), Jupyter inline cells, standalone `.html`, Flutter/Web chatbots |
+| **Headless 2D & Vector** | Pure Python (`Pillow` 2x supersampled + `SVG` + `ffmpeg` pipe) | `.png`, `.svg`, `.gif`, `.mp4`, `.webm` (runs in ms on Raspberry Pi with zero Chromium!) |
+| **Terminal TUI** | Pure Python ANSI 24-bit TrueColor + Unicode Block & Braille (`2x4` subpixels) | `print(fig)`, `fig.print()` live loop, `.txt`, `.ans` |
+
+---
+
+## 4. Real-Time Streaming Protocol (WebSocket)
+
+When `fx.show(fig)` opens a figure containing dynamic `Callable[[float], ...]` or Python generator (`yield`) sources, `FluxioLiveServer` runs an `asyncio` HTTP + WebSocket loop on `127.0.0.1`:
+
+- **`snapshot`**: Sent on initial connection with the full `FigureSpec`.
+- **`tick`**: Streams incremental `{ id, value, formatted }` or `{ id, series_data }` deltas at `fig.fps`.
+- **`control`**: Bidirectional toolbar commands (`play`, `pause`, `reset`) sent from the viewer back to Python.
 
 ---
 
@@ -214,9 +593,10 @@ A single `fx.Figure` instance supports four output targets without rewriting you
 ## 1. Interactive Desktop Window (`fx.show`)
 
 ```python
-fx.show(fig)                        # Native pywebview window (fallback: frameless --app browser)
-fx.show(fig, backend="browser")     # Force browser window
-fx.show(fig, backend="terminal")    # Force live in-place terminal mode
+fx.show(fig)                      # Auto: native pywebview (or GPU --app window on Linux Wayland+NVIDIA)
+fx.show(fig, backend="browser")   # Force frameless GPU --app browser window
+fx.show(fig, backend="pywebview") # Force pywebview OS WebView
+fx.show(fig, backend="terminal")  # Force live in-place terminal mode
 ```
 
 Interactive toolbar controls (Material SVG icons):
@@ -240,12 +620,12 @@ No need to switch to `plotext` for console or SSH sessions:
 - **Single snapshot or manual loop (`print(fig)`)**:
   ```python
   for _ in range(50):
-      print(fig)        # Advances time/generators and overwrites previous lines in-place!
+      print(fig)  # Advances time/generators and overwrites previous lines in-place!
       time.sleep(0.1)
   ```
 - **Automatic live TUI loop (`fig.print()` / `fx.print(fig)`)**:
   ```python
-  fig.print(duration=5.0, fps=20)   # Omit duration to run until Q or Ctrl+C
+  fig.print(duration=5.0, fps=20)  # Omit duration to run until Q or Ctrl+C
   ```
   Supports live keyboard shortcuts in TTY terminals: **`Space`** (Pause/Play), **`R`** (Reset), **`Q` / `Ctrl+C`** (Quit). Also updates in-place inside Jupyter cells via `clear_output(wait=True)`.
 
@@ -261,18 +641,40 @@ All exports run headlessly in milliseconds without Chromium:
 | `.mp4` / `.webm` | Hardware-compatible H.264 / VP9 video (requires `ffmpeg`) | `duration=3.0, fps=30, scale=1.0` |
 | `.html` | 100% self-contained interactive offline web page | `duration=3.0, fps=24` |
 | `.txt` / `.ans` | Plain UTF-8 Unicode box-art (`.txt`) or ANSI TrueColor (`.ans`) | — |
+| `.term.svg` | Pixel-locked ANSI TrueColor Terminal SVG (zero font misalignment for docs & READMEs) | — |
 
 ---
 
 <!-- source: docs/charts/number.md -->
 
-# `number()` — Numeric KPI & Live Value Card
+# `Number` / `fig.number()` — Numeric KPI & Live Value Card
 
-Displays a single numeric metric (static value, continuous function of time `f(t)`, or Python generator `yield`) inside a `Figure` grid cell.
+Displays a single numeric metric (static value, continuous function of time `f(t)`, or Python generator `yield`).
 
-## Signature
+Inherits from **`Indicator` -> `Visual`** (3-level hierarchy): works both **standalone** (`fx.Number(...).show()`) and **inside a multi-cell `Figure`** (`fig.number(...)`, `fig[r, c].number(...)`, or `fig[r, c] = fx.Number(...)`).
+
+---
+
+## Signatures
 
 ```python
+# 1. Standalone or assignable object
+num = fx.Number(
+    value: int | float | Callable[[float], int | float] | Iterator[int | float],
+    *,
+    label: str = "",
+    unit: str = "",
+    prefix: str = "",
+    precision: int | None = None,
+    color: str | None = None,
+    description: str = "",
+    title: str = "",
+    subtitle: str = "",
+    theme: str = "dark",
+    size: tuple[int, int] = (780, 340),
+)
+
+# 2. Directly on a Figure or SubplotSlot
 fig.number(
     value: int | float | Callable[[float], int | float] | Iterator[int | float],
     *,
@@ -286,75 +688,231 @@ fig.number(
     col: int | None = None,
     row_span: int = 1,
     col_span: int = 1,
-) -> NumberCell
+) -> Number
 ```
 
-Can also be called via Matplotlib-like grid indexing: `fig[row, col].number(...)`.
-
-## Parameters
+## Parameters & Specificities
 
 | Parameter | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
 | `value` | `int \| float \| Callable \| Iterator` | *required* | Static number, `fn(t_seconds)` callable, or Python generator yielding numbers. |
-| `label` | `str` | `""` | Header title displayed at the top-left of the card. |
+| `label` | `str` | `""` | Header title displayed at the top-left of the card (`┤ Label ├` in `text` variant). |
 | `unit` | `str` | `""` | Unit suffix displayed next to the number (e.g. `"°C"`, `"%"`, `"ms"`). |
 | `prefix` | `str` | `""` | Prefix prepended before digits (e.g. `"€"`, `"$"`). |
-| `precision` | `int \| None` | `None` | Fixed decimal places (`None` auto-formats integers vs floats). |
+| `precision` | `int \| None` | `None` | Fixed decimal places (`None` auto-formats integers cleanly and trims trailing zeros up to 3 decimals). |
 | `color` | `str \| None` | `None` | Shorthand hex color override for this cell's accent and value. |
-| `description` | `str` | `""` | Subtitle/context note displayed at the bottom of the card. |
-| `row`, `col` | `int \| None` | `None` | 0-based grid coordinates (auto-placed in next free slot if omitted). |
-| `row_span`, `col_span` | `int` | `1` | Number of grid rows/columns spanned by this cell. |
+| `description` | `str` | `""` | Context subtitle displayed at the bottom of the card (shown automatically when card height ≥ 130 px). |
+
+!!! tip "Auto-Fitting Typography & `reverse` Contrast"
+    - **Overflow protection**: If a formatted number + unit is wider than the card, Fluxio automatically scales the font size down proportionally so digits never clip.
+    - **`variant="reverse"`**: Fills the card with `accent` and automatically picks `#ffffff` or `#090d16` ink based on WCAG luminance, applying `text_opacity` (default `0.90` on digits, `~0.68` on label/unit) so text blends harmoniously into the card hue.
+
+---
 
 ## Examples
 
-### Minimal Static Number
+=== "1. Minimal"
+
+    ```python
+    import fluxio as fx
+
+    fx.Number(42.5, unit="°C", label="Core Temp").show()
+    ```
+
+    === "2. Animated `.gif` (Generator & `f(t)`)"
+
+    ```python
+    import itertools
+    import math
+    import fluxio as fx
+
+    fig = fx.Figure(rows=1, cols=2, title="Live KPI Stream", size=(820, 340), fps=16)
+    fig.style(background=fx.Gradient(["#090d16", "#1e1b4b"], angle=135), radius=20)
+
+    # Left: continuous function of time t
+    fig[0, 0].style(accent="#f97316", accent_side="left").number(
+        lambda t: 850.0 + 110.0 * math.sin(2.0 * math.pi * t / 2.0),
+        unit="°C",
+        precision=1,
+        label="Magma Temp",
+    )
+
+    # Right: Python generator (`yield`) in `reverse` style
+    fig[0, 1].style(variant="reverse", accent="#2563eb", accent_side="right").number(
+        (i * 15 for i in itertools.count(1)),
+        unit="pkt",
+        precision=0,
+        label="Network Packets",
+    )
+
+    fig.save("number_anim.gif", duration=2.0, fps=16)
+    ```
+
+    === "3. Terminal Output (`print`)"
+
+    ```python
+    import fluxio as fx
+
+    n = fx.Number(99.95, unit="%", precision=2, label="Availability", description="SLA > 99.9%")
+    n.style(accent="#34d399", accent_side="left")
+    print(n)      # Or `n.print()` for live in-place updates!
+    ```
+
+---
+
+<!-- source: docs/charts/plot.md -->
+
+# `Plot` / `fig.plot()` — 2D Line & Time-Series Chart
+
+Draws one or more 1D/2D continuous or discrete curves on a modern `Axis2D` coordinate system.
+
+Inherits from **`Axis2D` -> `Visual`** (3-level hierarchy): works both **standalone** (`fx.Plot(...).show()`) and **inside a multi-cell `Figure`** (`fig.plot(...)`, `fig[r, c].plot(...)`, or `fig[r, c] = fx.Plot(...)`). Calling `.plot(...)` multiple times on the same `Plot` or `(row, col)` cell **superposes multiple curves** with automatic palette cycling and legend.
+
+---
+
+## Signatures
 
 ```python
-import fluxio as fx
+# 1. Standalone or assignable object
+p = fx.Plot(
+    x_or_y: Any = None,
+    y: Any = None,
+    *,
+    label: str = "",
+    color: str | None = None,
+    linewidth: float = 2.4,
+    linestyle: str = "solid",        # "solid" | "dashed" | "dotted"
+    marker: str | None = None,       # None | "circle" | "dot"
+    fill_alpha: float = 0.12,        # Subtle Grafana-style gradient under curve (0.0 to disable)
+    max_points: int = 120,           # Rolling window size for streaming scalar generators/callables
+    card_title: str = "",
+    xlabel: str = "",
+    ylabel: str = "",
+    xlim: tuple[float, float] | None = None,
+    ylim: tuple[float, float] | None = None,
+    grid: bool = True,
+    legend: bool = True,
+    title: str = "",
+    subtitle: str = "",
+    theme: str = "dark",
+    size: tuple[int, int] = (840, 460),
+)
 
-fig = fx.Figure(title="CPU Telemetry")
-fig.number(42.5, unit="°C", precision=1, label="Core Temperature")
-fx.show(fig)
+# 2. Directly on a Figure or SubplotSlot (superposes if called multiple times on the same cell!)
+fig.plot(x_or_y, y=None, *, label="", color=None, linewidth=2.4, linestyle="solid", marker=None, fill_alpha=0.12, xlabel="", ylabel="", row=None, col=None) -> Plot
 ```
 
-### Multi-Cell Grid with Dynamic Function, Generator & Variants
+## Parameters & Specificities
 
-```python
-import itertools
-import math
-import fluxio as fx
+| Parameter | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `x_or_y`, `y` | `Sequence \| Callable \| Iterator` | — | Pass `(x, y)` sequences, a single `y` sequence (`x = 0..n-1`), a `fn(t)` callable, or a Python generator (`yield`). |
+| `label` | `str` | `""` | Series name displayed in the top-right legend and magnetic hover tooltip. |
+| `card_title` | `str` | `""` | Optional header title inside the top-left of the cell card (distinct from `label`, which names the curve). |
+| `color` | `str \| None` | `None` | Hex color for this curve (cycles automatically through Fluxio's high-contrast palette if omitted). |
+| `linewidth` | `float` | `2.4` | Stroke thickness in pixels. |
+| `linestyle` | `str` | `"solid"` | `"solid"`, `"dashed"`, or `"dotted"`. |
+| `marker` | `str \| None` | `None` | Optional point marker: `None` (clean line), `"circle"` (ring with dark center), or `"dot"` (filled circle). |
+| `fill` | `bool \| None` | `None` | Shorthand toggle for the area glow (`fill=False` sets `fill_alpha=0.0`; `fill=True` enables area fill). |
+| `fill_alpha` | `float` | `0.12` | Vertical gradient fill opacity from the curve down to the `0` baseline (`0.0` for plain Matplotlib-like stroke). |
+| `max_points` | `int` | `120` | Sliding ring-buffer length when `x_or_y` yields or returns streaming scalar points. |
+| `xlabel`, `ylabel` | `str` | `""` | Horizontal and rotated (`-90°`) vertical axis titles. |
+| `xmin`, `xmax` | `float \| None` | `None` | Explicit horizontal lower and/or upper bound (supports partial locking, e.g. `xmin=0` with auto `xmax`). |
+| `ymin`, `ymax` | `float \| None` | `None` | Explicit vertical lower and/or upper bound (e.g. `ymin=0` pins the floor at `0` while auto-scaling the ceiling). |
+| `xstep`, `ystep` | `float \| None` | `None` | Exact gridline & tick spacing along X and Y (e.g. `xmin=0, xmax=10, xstep=2` draws grid columns at `0, 2, 4, 6, 8, 10`). |
+| `xlim`, `ylim` | `tuple \| None` | `None` | Shorthand `(min, max)` or 3-tuple `(min, max, step)` (e.g. `xlim=(0, 10, 2)`). |
+| `legend` | `bool \| str` | `True` | `"top"` / `True` (dedicated wrapped line right under the bold card title), `"bottom"` (below `xlabel`, Grafana-style), or `False` / `"none"`. |
 
-fig = fx.Figure(rows=2, cols=2, title="Live System Metrics", fps=24)
-fig.style(
-    background=fx.Gradient(["#090d16", "#1e1b4b"], angle=135),
-    accent_side="left",
-    radius=20,
-)
+!!! info "Two Automatic Real-Time Modes"
+    `Plot` inspects what your `Callable[[float], ...]` or Python generator returns:
 
-# Top row spanning 2 columns: function of elapsed time `t` (seconds)
-fig.number(
-    lambda t: 65.0 + 18.0 * math.sin(t * 2.0),
-    unit="%",
-    precision=1,
-    label="Cluster Load",
-    row=0,
-    col=0,
-    col_span=2,
-)
+    1. **Scalar `y` or `(x, y)` point** → **Rolling Time-Series Mode** (like Grafana): appends each new sample and keeps the latest `max_points` points.
+    2. **Sequence `ys` or `(xs, ys)`** → **Animated Waveform Mode**: replaces the entire curve on each frame (ideal for physics waves, FFT spectra, or moving profiles).
 
-# Bottom-left: classic translucent card
-fig[1, 0].style(accent="#34d399").number(43.2, unit="°C", precision=1, label="SoC Temp")
+---
 
-# Bottom-right: solid reverse card driven by a Python generator
-fig[1, 1].style(variant="reverse", accent="#ea580c", accent_side="right").number(
-    (i * 12 for i in itertools.count(1)),
-    unit="pkt",
-    precision=0,
-    label="Packet Stream",
-)
+## Examples
 
-fx.show(fig)
-```
+=== "1. Minimal"
+
+    ```python
+    import fluxio as fx
+
+    fx.Plot([12, 28, 19, 37, 31, 46]).show()
+    ```
+
+    === "2. Multi-Series & Markers"
+
+    ```python
+    import math
+    import fluxio as fx
+
+    xs = [round(i * 0.2, 2) for i in range(36)]
+    p = fx.Plot(
+        xs,
+        [75.0 * math.exp(-0.22 * x) + 20.0 for x in xs],
+        label="Model",
+        xlabel="Time (s)",
+        ylabel="Temp (°C)",
+        title="Plot — Multi-Series & Area Glow",
+    )
+    p.plot(
+        xs,
+        [75.0 * math.exp(-0.22 * x) + 20.0 + 9.0 * math.sin(x * 2.4) for x in xs],
+        label="Sensor",
+        color="#f97316",
+        linestyle="dashed",
+        marker="circle",
+        fill_alpha=0.05,
+    )
+    p.show()
+    ```
+
+    === "3. Animated `.gif` (Wave & Rolling Stream)"
+
+    ```python
+    import math
+    import fluxio as fx
+
+    xs = [i * 0.16 for i in range(42)]
+    p = fx.Plot(
+        lambda t: (
+            xs,
+            [math.sin(x - 2.0 * math.pi * t / 2.0) * math.cos(x * 0.28) for x in xs],
+        ),
+        label="Wave Mode",
+        xlabel="Position (m)",
+        ylabel="Displacement",
+        ylim=(-1.15, 1.15),
+        title="Travelling Wave Packet",
+        size=(760, 380),
+        fps=16,
+    )
+    p.plot(
+        lambda t: (
+            xs,
+            [0.55 * math.cos(x * 1.3 + 2.0 * math.pi * t / 2.0) for x in xs],
+        ),
+        label="Counter-Wave",
+        color="#f97316",
+        linestyle="dashed",
+        fill_alpha=0.04,
+    )
+
+    p.save("plot_anim.gif", duration=2.0, fps=16)
+    ```
+
+    === "4. Terminal Braille (`print`)"
+
+    ```python
+    import math
+    import fluxio as fx
+
+    xs = [i * 0.25 for i in range(28)]
+    p = fx.Plot(xs, [math.sin(x) for x in xs], label="sin(x)", xlabel="x")
+    p.plot(xs, [math.cos(x) for x in xs], label="cos(x)", linestyle="dashed", color="#f97316")
+    print(p)    # High-resolution 2x4 Unicode Braille + ANSI TrueColor!
+    ```
 
 ---
 
